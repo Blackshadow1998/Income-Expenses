@@ -1,16 +1,56 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
+import { AuthProvider, useAuth } from '@/auth';
+import {
+  LoadingScreen, OfflineScreen, Overlay, PinLockScreen, PinSetupScreen, SignInScreen,
+} from '@/components/AuthScreens';
 import { COLORS } from '@/format';
 
 export default function RootLayout() {
   return (
-    <>
+    <AuthProvider>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ contentStyle: { backgroundColor: COLORS.bg }, headerTitleAlign: 'center' }}>
+      <Gate />
+    </AuthProvider>
+  );
+}
+
+/**
+ * The app itself is mounted only once someone is signed in (and remounted per user, so no screen
+ * keeps another user's data). The PIN screens cover it instead of replacing it, so an idle lock
+ * doesn't lose what was on screen, e.g. a half-filled form.
+ */
+function Gate() {
+  const { status, user, touch } = useAuth();
+  if (status === 'loading') return <LoadingScreen />;
+  if (status === 'offline') return <OfflineScreen />;
+  if (status === 'signedOut' || !user) return <SignInScreen />;
+
+  return (
+    <View
+      style={{ flex: 1 }}
+      onStartShouldSetResponderCapture={() => {
+        touch();
+        return false;
+      }}
+    >
+      <Stack key={user.id} screenOptions={{ contentStyle: { backgroundColor: COLORS.bg }, headerTitleAlign: 'center' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="transaction" options={{ title: 'รายการ' }} />
         <Stack.Screen name="account" options={{ title: 'บัญชี' }} />
+        <Stack.Screen name="change-pin" options={{ title: 'เปลี่ยน PIN' }} />
       </Stack>
-    </>
+      {status === 'needsPin' && (
+        <Overlay>
+          <PinSetupScreen />
+        </Overlay>
+      )}
+      {status === 'locked' && (
+        <Overlay>
+          <PinLockScreen />
+        </Overlay>
+      )}
+    </View>
   );
 }

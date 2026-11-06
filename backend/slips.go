@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type Slip struct {
 	OCRText       string  `json:"ocr_text"`
 	Status        string  `json:"status"`
 	TransactionID *int64  `json:"transaction_id"`
+	ImageURL      string  `json:"image_url"` // signed path of the image, relative to the API root
 }
 
 type slipUploadResult struct {
@@ -45,31 +47,32 @@ const selectSlip = `
 	       sl.bank_id, COALESCE(b.name, ''), sl.ocr_text, sl.status, sl.transaction_id
 	FROM slips sl LEFT JOIN banks b ON b.id = sl.bank_id`
 
-func scanSlip(s scanner) (Slip, error) {
+func (a *API) scanSlip(s scanner) (Slip, error) {
 	var sl Slip
 	var satang int64
 	err := s.Scan(&sl.ID, &sl.Date, &sl.DateFound, &satang, &sl.FromName, &sl.ToName, &sl.Ref,
 		&sl.BankID, &sl.BankName, &sl.OCRText, &sl.Status, &sl.TransactionID)
 	sl.Amount = fromSatang(satang)
+	sl.ImageURL = a.slipImageURL(sl.ID)
 	return sl, err
 }
 
-func (a *API) fetchSlip(ctx context.Context, id int64) (Slip, error) {
-	return scanSlip(a.db.QueryRowContext(ctx, selectSlip+` WHERE sl.id = ?`, id))
+func (a *API) fetchSlip(ctx context.Context, uid, id int64) (Slip, error) {
+	return a.scanSlip(a.db.QueryRowContext(ctx, selectSlip+` WHERE sl.id = ? AND sl.user_id = ?`, id, uid))
 }
 
 // pendingSlips lists slips waiting for confirmation whose date falls in [start, end).
-func (a *API) pendingSlips(ctx context.Context, start, end string) ([]Slip, error) {
+func (a *API) pendingSlips(ctx context.Context, uid int64, start, end string) ([]Slip, error) {
 	rows, err := a.db.QueryContext(ctx, selectSlip+`
-		WHERE sl.status = 'pending' AND sl.slip_date >= ? AND sl.slip_date < ?
-		ORDER BY sl.slip_date DESC, sl.id DESC`, start, end)
+		WHERE sl.user_id = ? AND sl.status = 'pending' AND sl.slip_date >= ? AND sl.slip_date < ?
+		ORDER BY sl.slip_date DESC, sl.id DESC`, uid, start, end)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []Slip{}
 	for rows.Next() {
-		sl, err := scanSlip(rows)
+		sl, err := a.scanSlip(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -106,14 +109,14 @@ func (a *API) uploadSlips(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			res.Error = "อ่านไฟล์ไม่ได้"
 		} else {
-			res = a.saveSlip(r.Context(), fh.Filename, data)
+			res = a.saveSlip(r.Context(), userID(r), fh.Filename, data)
 		}
 		results = append(results, res)
 	}
 	writeJSON(w, http.StatusOK, results)
 }
 
-func (a *API) saveSlip(ctx context.Context, name string, data []byte) slipUploadResult {
+func (a *API) saveSlip(ctx context.Context, uid int64, name string, data []byte) slipUploadResult {
 	res := slipUploadResult{File: name}
 	if len(data) > maxSlipBytes {
 		res.Error = "ไฟล์ใหญ่เกิน 10MB"
@@ -128,11 +131,11 @@ func (a *API) saveSlip(ctx context.Context, name string, data []byte) slipUpload
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
 	var existingID int64
-	err := a.db.QueryRowContext(ctx, `SELECT id FROM slips WHERE file_hash = ?`, hash).Scan(&existingID)
+	err := a.db.QueryRowContext(ctx, `SELECT id FROM slips WHERE user_id = ? AND file_hash = ?`, uid, hash).Scan(&existingID)
 	if err == nil {
 		res.Duplicate = true
 		res.Error = "สลิปนี้เคยอัปโหลดแล้ว"
-		if sl, err := a.fetchSlip(ctx, existingID); err == nil {
+		if sl, err := a.fetchSlip(ctx, uid, existingID); err == nil {
 			res.Slip = &sl
 		}
 		return res
@@ -142,7 +145,8 @@ func (a *API) saveSlip(ctx context.Context, name string, data []byte) slipUpload
 		return res
 	}
 
-	fileName := hash[:24] + ext
+	// Per-user file name: two users may upload the same image (e.g. both sides of one transfer).
+	fileName := strconv.FormatInt(uid, 10) + "-" + hash[:24] + ext
 	path := filepath.Join(a.slipsDir, fileName)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		logger.Printf("write slip: %v", err)
@@ -159,11 +163,12 @@ func (a *API) saveSlip(ctx context.Context, name string, data []byte) slipUpload
 
 	// A slip with the same reference number is the same transfer (e.g. a re-saved screenshot).
 	if parsed.Ref != "" {
-		if err := a.db.QueryRowContext(ctx, `SELECT id FROM slips WHERE ref = ?`, parsed.Ref).Scan(&existingID); err == nil {
+		if err := a.db.QueryRowContext(ctx,
+			`SELECT id FROM slips WHERE user_id = ? AND ref = ?`, uid, parsed.Ref).Scan(&existingID); err == nil {
 			os.Remove(path)
 			res.Duplicate = true
 			res.Error = "สลิปเลขที่รายการนี้เคยอัปโหลดแล้ว"
-			if sl, err := a.fetchSlip(ctx, existingID); err == nil {
+			if sl, err := a.fetchSlip(ctx, uid, existingID); err == nil {
 				res.Slip = &sl
 			}
 			return res
@@ -183,9 +188,9 @@ func (a *API) saveSlip(ctx context.Context, name string, data []byte) slipUpload
 	}
 
 	ins, err := a.db.ExecContext(ctx, `
-		INSERT INTO slips (image_file, file_hash, slip_date, date_found, amount_satang, from_name, to_name, ref, bank_id, ocr_text)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		fileName, hash, date, dateFound, toSatang(parsed.Amount), parsed.FromName, parsed.ToName, parsed.Ref, bankID, text)
+		INSERT INTO slips (user_id, image_file, file_hash, slip_date, date_found, amount_satang, from_name, to_name, ref, bank_id, ocr_text)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uid, fileName, hash, date, dateFound, toSatang(parsed.Amount), parsed.FromName, parsed.ToName, parsed.Ref, bankID, text)
 	if err != nil {
 		os.Remove(path)
 		logger.Printf("insert slip: %v", err)
@@ -193,7 +198,7 @@ func (a *API) saveSlip(ctx context.Context, name string, data []byte) slipUpload
 		return res
 	}
 	id, _ := ins.LastInsertId()
-	sl, err := a.fetchSlip(ctx, id)
+	sl, err := a.fetchSlip(ctx, uid, id)
 	if err != nil {
 		res.Error = "บันทึกแล้วแต่อ่านข้อมูลกลับไม่ได้"
 		return res
@@ -207,7 +212,7 @@ func (a *API) getSlip(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	sl, err := a.fetchSlip(r.Context(), id)
+	sl, err := a.fetchSlip(r.Context(), userID(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		notFound(w)
 		return
@@ -224,6 +229,10 @@ func (a *API) slipImage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !a.validImageSig(r, id) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "ลิงก์รูปสลิปหมดอายุ กรุณาเปิดหน้าใหม่"})
+		return
+	}
 	var file string
 	err := a.db.QueryRowContext(r.Context(), `SELECT image_file FROM slips WHERE id = ?`, id).Scan(&file)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -234,7 +243,7 @@ func (a *API) slipImage(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeFile(w, r, filepath.Join(a.slipsDir, filepath.Base(file)))
 }
 
@@ -245,8 +254,10 @@ func (a *API) deleteSlip(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	uid := userID(r)
 	var file, status string
-	err := a.db.QueryRowContext(r.Context(), `SELECT image_file, status FROM slips WHERE id = ?`, id).Scan(&file, &status)
+	err := a.db.QueryRowContext(r.Context(),
+		`SELECT image_file, status FROM slips WHERE id = ? AND user_id = ?`, id, uid).Scan(&file, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		notFound(w)
 		return
@@ -259,7 +270,7 @@ func (a *API) deleteSlip(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "สลิปนี้คอนเฟิร์มแล้ว ให้ลบที่รายการแทน"})
 		return
 	}
-	if _, err := a.db.ExecContext(r.Context(), `DELETE FROM slips WHERE id = ?`, id); err != nil {
+	if _, err := a.db.ExecContext(r.Context(), `DELETE FROM slips WHERE id = ? AND user_id = ?`, id, uid); err != nil {
 		serverError(w, err)
 		return
 	}

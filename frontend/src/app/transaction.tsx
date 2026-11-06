@@ -180,8 +180,8 @@ export default function TransactionScreen() {
 
       {slip && (
         <View style={styles.slipCard}>
-          <Pressable onPress={() => Linking.openURL(api.slipImageUrl(slip.id))} accessibilityLabel="ดูรูปสลิป">
-            <Image source={{ uri: api.slipImageUrl(slip.id) }} style={styles.slipThumb} resizeMode="cover" />
+          <Pressable onPress={() => Linking.openURL(api.slipImageUrl(slip))} accessibilityLabel="ดูรูปสลิป">
+            <Image source={{ uri: api.slipImageUrl(slip) }} style={styles.slipThumb} resizeMode="cover" />
           </Pressable>
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={styles.slipTitle}>🧾 ข้อมูลจากสลิป (ตรวจสอบก่อนบันทึก)</Text>

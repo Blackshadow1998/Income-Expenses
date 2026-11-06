@@ -108,12 +108,49 @@ CREATE TABLE IF NOT EXISTS accounts (
 	updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
--- Uploaded bank slips. A slip stays "pending" (not counted in any balance) until the
--- user confirms it, which creates the transaction and links it here.
+` + slipsTable + `
+CREATE INDEX IF NOT EXISTS idx_slips_date ON slips(slip_date);
+CREATE INDEX IF NOT EXISTS idx_slips_txn ON slips(transaction_id);
+
+-- Sign-in. accounts, transactions and slips belong to one user (user_id).
+CREATE TABLE IF NOT EXISTS users (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	name       TEXT    NOT NULL,                  -- display name
+	pin_hash   TEXT    NOT NULL DEFAULT '',       -- bcrypt of the 6-digit unlock PIN; '' = not set yet
+	created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Ways a user signs in: 'password' (subject = username) now, 'google' (subject = Google account id) later.
+CREATE TABLE IF NOT EXISTS identities (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	provider      TEXT    NOT NULL,
+	subject       TEXT    NOT NULL,
+	secret_hash   TEXT    NOT NULL DEFAULT '',    -- bcrypt of the password; '' for providers without one
+	failed_logins INTEGER NOT NULL DEFAULT 0,
+	locked_until  INTEGER NOT NULL DEFAULT 0,     -- unix seconds; sign-in paused after repeated wrong passwords
+	created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+	UNIQUE (provider, subject)
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+	token_hash     TEXT    PRIMARY KEY,           -- sha256 of the bearer token; the token itself is not stored
+	user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	expires_at     INTEGER NOT NULL,              -- unix seconds
+	unlocked_until INTEGER NOT NULL,              -- unix seconds; the PIN is asked again after this
+	pin_failures   INTEGER NOT NULL DEFAULT 0,
+	created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+`
+
+// Uploaded bank slips. A slip stays "pending" (not counted in any balance) until the
+// user confirms it, which creates the transaction and links it here.
+const slipsTable = `
 CREATE TABLE IF NOT EXISTS slips (
 	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id        INTEGER REFERENCES users(id),
 	image_file     TEXT    NOT NULL,                -- file name inside the slips directory
-	file_hash      TEXT    NOT NULL UNIQUE,         -- sha256, blocks uploading the same image twice
+	file_hash      TEXT    NOT NULL,                -- sha256, blocks uploading the same image twice
 	slip_date      TEXT    NOT NULL,                -- YYYY-MM-DD (upload day when not readable)
 	date_found     INTEGER NOT NULL DEFAULT 0,
 	amount_satang  INTEGER NOT NULL DEFAULT 0,      -- 0 = not readable
@@ -124,11 +161,9 @@ CREATE TABLE IF NOT EXISTS slips (
 	ocr_text       TEXT    NOT NULL DEFAULT '',
 	status         TEXT    NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed')),
 	transaction_id INTEGER REFERENCES transactions(id),
-	created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+	created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+	UNIQUE (user_id, file_hash)
 );
-
-CREATE INDEX IF NOT EXISTS idx_slips_date ON slips(slip_date);
-CREATE INDEX IF NOT EXISTS idx_slips_txn ON slips(transaction_id);
 `
 
 // migrations run after schema for databases created by an older version.
@@ -142,8 +177,53 @@ func migrate(db *sql.DB) error {
 	if err := addColumnIfMissing(db, "transactions", "payee", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`)
+	// Rows from before sign-in existed keep user_id NULL until the first user signs up and takes them over.
+	if err := addColumnIfMissing(db, "accounts", "user_id", "INTEGER REFERENCES users(id)"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "transactions", "user_id", "INTEGER REFERENCES users(id)"); err != nil {
+		return err
+	}
+	if err := upgradeSlips(db); err != nil {
+		return fmt.Errorf("upgrade slips: %w", err)
+	}
+	_, err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
+		CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, txn_date);
+		CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id);
+		CREATE INDEX IF NOT EXISTS idx_slips_user_date ON slips(user_id, slip_date);`)
 	return err
+}
+
+// upgradeSlips moves a slips table from before sign-in (no user_id, file_hash unique across
+// everyone) to the per-user shape. SQLite can't drop a UNIQUE constraint in place, so it is copied.
+func upgradeSlips(db *sql.DB) error {
+	var has bool
+	if err := db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM pragma_table_info('slips') WHERE name = 'user_id')`,
+	).Scan(&has); err != nil || has {
+		return err
+	}
+	const cols = `id, image_file, file_hash, slip_date, date_found, amount_satang, from_name, to_name,
+		ref, bank_id, ocr_text, status, transaction_id, created_at`
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		`ALTER TABLE slips RENAME TO slips_old`,
+		slipsTable,
+		`INSERT INTO slips (` + cols + `) SELECT ` + cols + ` FROM slips_old`,
+		`DROP TABLE slips_old`, // also drops its indexes, recreated below
+		`CREATE INDEX IF NOT EXISTS idx_slips_date ON slips(slip_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_slips_txn ON slips(transaction_id)`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func addColumnIfMissing(db *sql.DB, table, column, def string) error {

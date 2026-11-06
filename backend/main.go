@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log"
 	"net/http"
@@ -30,7 +31,12 @@ func main() {
 	if err := os.MkdirAll(slipsDir, 0o755); err != nil {
 		logger.Fatalf("create slips dir: %v", err)
 	}
-	api := &API{db: db, slipsDir: slipsDir}
+	// Fresh key per start: slip image links are short-lived and the app re-fetches them anyway.
+	imageKey := make([]byte, 32)
+	if _, err := rand.Read(imageKey); err != nil {
+		logger.Fatalf("image key: %v", err)
+	}
+	api := &API{db: db, slipsDir: slipsDir, imageKey: imageKey}
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           logRequests(api.routes()),

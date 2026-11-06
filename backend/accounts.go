@@ -70,14 +70,16 @@ func scanAccount(s scanner) (Account, error) {
 	return a, err
 }
 
-func (a *API) fetchAccount(ctx context.Context, id int64) (Account, error) {
-	return scanAccount(a.db.QueryRowContext(ctx, selectAccount+` WHERE a.id = ?`, id))
+func (a *API) fetchAccount(ctx context.Context, uid, id int64) (Account, error) {
+	return scanAccount(a.db.QueryRowContext(ctx, selectAccount+` WHERE a.id = ? AND a.user_id = ?`, id, uid))
 }
 
 // listAccounts returns every account with its balance, plus the grand total and
 // a per-type breakdown. Transactions saved before accounts existed are reported as "unassigned".
 func (a *API) listAccounts(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), selectAccount+` ORDER BY ty.sort_order, b.sort_order, a.id`)
+	uid := userID(r)
+	rows, err := a.db.QueryContext(r.Context(), selectAccount+`
+		WHERE a.user_id = ? ORDER BY ty.sort_order, b.sort_order, a.id`, uid)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -109,7 +111,7 @@ func (a *API) listAccounts(w http.ResponseWriter, r *http.Request) {
 	if err := a.db.QueryRowContext(r.Context(), `
 		SELECT COALESCE(SUM(t.amount_satang * c.direction), 0), COUNT(*)
 		FROM transactions t JOIN categories c ON c.id = t.category_id
-		WHERE t.account_id IS NULL`).Scan(&unassignedSatang, &unassignedCount); err != nil {
+		WHERE t.account_id IS NULL AND t.user_id = ?`, uid).Scan(&unassignedSatang, &unassignedCount); err != nil {
 		serverError(w, err)
 		return
 	}
@@ -160,7 +162,7 @@ func (a *API) getAccount(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	acc, err := a.fetchAccount(r.Context(), id)
+	acc, err := a.fetchAccount(r.Context(), userID(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		notFound(w)
 		return
@@ -178,14 +180,14 @@ func (a *API) createAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := a.db.ExecContext(r.Context(),
-		`INSERT INTO accounts (bank_id, type_id, name, opening_satang) VALUES (?, ?, ?, ?)`,
-		in.BankID, in.TypeID, in.Name, toSatang(in.Opening))
+		`INSERT INTO accounts (user_id, bank_id, type_id, name, opening_satang) VALUES (?, ?, ?, ?, ?)`,
+		userID(r), in.BankID, in.TypeID, in.Name, toSatang(in.Opening))
 	if err != nil {
 		serverError(w, err)
 		return
 	}
 	id, _ := res.LastInsertId()
-	acc, err := a.fetchAccount(r.Context(), id)
+	acc, err := a.fetchAccount(r.Context(), userID(r), id)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -205,8 +207,8 @@ func (a *API) updateAccount(w http.ResponseWriter, r *http.Request) {
 	res, err := a.db.ExecContext(r.Context(), `
 		UPDATE accounts
 		SET bank_id = ?, type_id = ?, name = ?, opening_satang = ?, updated_at = datetime('now')
-		WHERE id = ?`,
-		in.BankID, in.TypeID, in.Name, toSatang(in.Opening), id)
+		WHERE id = ? AND user_id = ?`,
+		in.BankID, in.TypeID, in.Name, toSatang(in.Opening), id, userID(r))
 	if err != nil {
 		serverError(w, err)
 		return
@@ -215,7 +217,7 @@ func (a *API) updateAccount(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	acc, err := a.fetchAccount(r.Context(), id)
+	acc, err := a.fetchAccount(r.Context(), userID(r), id)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -230,9 +232,10 @@ func (a *API) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	uid := userID(r)
 	var count int
 	if err := a.db.QueryRowContext(r.Context(),
-		`SELECT COUNT(*) FROM transactions WHERE account_id = ?`, id).Scan(&count); err != nil {
+		`SELECT COUNT(*) FROM transactions WHERE account_id = ? AND user_id = ?`, id, uid).Scan(&count); err != nil {
 		serverError(w, err)
 		return
 	}
@@ -242,7 +245,7 @@ func (a *API) deleteAccount(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	res, err := a.db.ExecContext(r.Context(), `DELETE FROM accounts WHERE id = ?`, id)
+	res, err := a.db.ExecContext(r.Context(), `DELETE FROM accounts WHERE id = ? AND user_id = ?`, id, uid)
 	if err != nil {
 		serverError(w, err)
 		return

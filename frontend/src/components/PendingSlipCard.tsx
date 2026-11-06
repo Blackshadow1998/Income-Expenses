@@ -13,7 +13,7 @@ export function PendingSlipCard({
   onConfirm: () => void;
   onDelete: () => void;
 }) {
-  const imageUrl = api.slipImageUrl(slip.id);
+  const imageUrl = api.slipImageUrl(slip);
   return (
     <View style={styles.card}>
       <Pressable onPress={() => Linking.openURL(imageUrl)} accessibilityLabel="ดูรูปสลิป">

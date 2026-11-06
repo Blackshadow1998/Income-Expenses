@@ -70,6 +70,19 @@ export interface Slip {
   ocr_text: string;
   status: 'pending' | 'confirmed';
   transaction_id: number | null;
+  image_url: string; // signed, short-lived path of the slip image
+}
+
+export interface User {
+  id: number;
+  name: string;
+  username: string;
+  has_pin: boolean;
+}
+
+export interface SignInResult {
+  token: string;
+  user: User;
 }
 
 export interface SlipUploadResult {
@@ -135,24 +148,90 @@ export interface YearData {
   totals: { in: number; out: number; net: number };
 }
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string, // e.g. unauthenticated, locked, pin_required, wrong_pin, bad_credentials
+  ) {
+    super(message);
+  }
+}
+
+/** Auth problems the sign-in gate (auth.tsx) reacts to. */
+export type AuthProblem = 'unauthenticated' | 'pin_required' | 'locked';
+
+let token: string | null = null;
+let onAuthProblem: ((p: AuthProblem) => void) | null = null;
+// Requests that hit "locked" / "pin_required" wait here until the PIN is entered, then retry,
+// so screens behind the lock screen just finish loading afterwards.
+let waiting: { resolve: () => void; reject: (e: Error) => void }[] = [];
+
+/** Time of the last successful request; the idle lock in auth.tsx reads and bumps it. */
+export const activity = { last: Date.now() };
+
+export function setAuthToken(t: string | null) {
+  token = t;
+}
+
+export function setAuthProblemHandler(fn: ((p: AuthProblem) => void) | null) {
+  onAuthProblem = fn;
+}
+
+export function resumeWaitingRequests() {
+  const w = waiting;
+  waiting = [];
+  w.forEach((x) => x.resolve());
+}
+
+export function cancelWaitingRequests() {
+  const w = waiting;
+  waiting = [];
+  w.forEach((x) => x.reject(new ApiError('กรุณาเข้าสู่ระบบ', 401, 'unauthenticated')));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}/api${path}`, {
-    ...init,
-    // FormData sets its own multipart Content-Type (with boundary).
-    headers: init?.body instanceof FormData ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
-  });
+  // FormData sets its own multipart Content-Type (with boundary).
+  const headers: Record<string, string> = init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}/api${path}`, { ...init, headers });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
+    let code: string | undefined;
     try {
-      msg = (await res.json()).error ?? msg;
+      const body = await res.json();
+      msg = body.error ?? msg;
+      code = body.code;
     } catch {}
-    throw new Error(msg);
+    if (code === 'locked' || code === 'pin_required') {
+      onAuthProblem?.(code);
+      await new Promise<void>((resolve, reject) => waiting.push({ resolve, reject }));
+      return request<T>(path, init);
+    }
+    if (code === 'unauthenticated') onAuthProblem?.(code);
+    throw new ApiError(msg, res.status, code);
   }
+  activity.last = Date.now();
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
+const post = (body?: unknown): RequestInit => ({ method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+
 export const api = {
+  auth: {
+    signup: (body: { name: string; username: string; password: string }) =>
+      request<SignInResult>('/auth/signup', post(body)),
+    login: (body: { username: string; password: string }) => request<SignInResult>('/auth/login', post(body)),
+    me: () => request<{ user: User; locked: boolean }>('/auth/me'),
+    unlock: (pin: string) => request<void>('/auth/unlock', post({ pin })),
+    /** First PIN, a reset right after a password sign-in (no currentPin), or a change. */
+    setPin: (pin: string, currentPin?: string) => request<void>('/auth/pin', post({ pin, current_pin: currentPin ?? '' })),
+    lock: () => request<void>('/auth/lock', post()),
+    logout: () => request<void>('/auth/logout', post()),
+    ping: () => request<void>('/auth/ping', post()),
+  },
+
   categories: () => request<Category[]>('/categories'),
   payees: () => request<string[]>('/payees'),
   months: () => request<string[]>('/months'),
@@ -191,5 +270,5 @@ export const api = {
   },
   getSlip: (id: number) => request<Slip>(`/slips/${id}`),
   removeSlip: (id: number) => request<void>(`/slips/${id}`, { method: 'DELETE' }),
-  slipImageUrl: (id: number) => `${API_URL}/api/slips/${id}/image`,
+  slipImageUrl: (slip: Slip) => `${API_URL}${slip.image_url}`,
 };

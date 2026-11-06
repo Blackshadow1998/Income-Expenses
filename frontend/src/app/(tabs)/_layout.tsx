@@ -16,6 +16,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: 'รายรับรายจ่าย', tabBarLabel: 'รายเดือน', tabBarIcon: icon('📅') }} />
       <Tabs.Screen name="yearly" options={{ title: 'สรุปรายปี', tabBarLabel: 'สรุปรายปี', tabBarIcon: icon('📊') }} />
       <Tabs.Screen name="accounts" options={{ title: 'บัญชี', tabBarLabel: 'บัญชี', tabBarIcon: icon('🏦') }} />
+      <Tabs.Screen name="settings" options={{ title: 'ตั้งค่า', tabBarLabel: 'ตั้งค่า', tabBarIcon: icon('⚙️') }} />
     </Tabs>
   );
 }

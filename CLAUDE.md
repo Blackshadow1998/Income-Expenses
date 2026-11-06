@@ -8,9 +8,12 @@ See README.md for features, API table and run commands.
 - `backend/` — Go 1.25, standard `net/http` (Go 1.22+ method routing), SQLite via `modernc.org/sqlite` (pure Go, no CGO). Runs in Docker.
   - `main.go` server + graceful shutdown · `db.go` schema/seed/migrations · `handlers.go` transactions, months, yearly, payees
   - `accounts.go` accounts/banks/types · `slips.go` slip upload/confirm · `slip_parse.go` Tesseract OCR + slip text parser (+ `slip_parse_test.go`)
+  - `auth.go` users, sessions, PIN lock, signed slip-image links (+ `auth_test.go`: migration from the pre-auth DB, per-user isolation, PIN flow)
 - `frontend/` — Expo SDK 58 + Expo Router (`src/app/`), React Native, TypeScript, runs on web/Android/iOS.
   - `(tabs)/index.tsx` monthly · `(tabs)/yearly.tsx` chart · `(tabs)/accounts.tsx` · `transaction.tsx` add/edit/confirm-slip form · `account.tsx` account form
+  - `(tabs)/settings.tsx` lock / change PIN / sign out · `change-pin.tsx`
   - `src/api.ts` all API calls + types · `src/format.ts` money/date/Thai month helpers, colors · `src/state.ts` tiny cross-screen hand-off
+  - `src/auth.tsx` AuthProvider (sign-in state, idle lock) · `components/AuthScreens.tsx` sign-in / PIN screens · `components/PinPad.tsx` · `src/tokenStore(.web).ts`
   - Follow `frontend/AGENTS.md` (Expo rules: `npx expo install`, versioned docs).
 - `docker-compose.yml` — API on :8080, data in volume `income_expenses_income_expenses_data` (`/app/data`: DB + `slips/` images).
 
@@ -31,6 +34,10 @@ cd frontend && npx expo start --web --port 8081                                #
 - New/edited transactions **require** an account; payee ("ผู้รับ") and subcategory are optional.
 - Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`). Deleting that transaction deletes the slip + image.
 - Deleting an account with transactions is refused (409).
+- Multi-user: `accounts`, `transactions`, `slips` carry `user_id`; **every query must filter by `userID(r)`**. Categories, subcategories, banks and account types are shared.
+  Data routes go through `requireUnlocked` (session + PIN unlocked within 5 min). The first user to sign up takes over rows with `user_id NULL`.
+- Sign-in methods live in `identities` (`provider`, `subject`) so Google sign-in can be added later without touching `users`.
+- Slip images are served via signed short-lived links (`image_url`), not the session token.
 
 ## Working on the owner's data
 
@@ -38,6 +45,8 @@ cd frontend && npx expo start --web --port 8081                                #
   `docker compose stop && docker cp income-expenses-api:/app/data/income_expenses.db backups/<name>.db && docker compose start`
 - Schema changes go through `migrate()` / `addColumnIfMissing` in `db.go` (existing DBs must upgrade in place).
 - Remove any test rows you create; never commit `backups/` or `*.db` (already in `.gitignore`).
+- Never sign up a test user on the live DB — it needs a real account to log in, and on a fresh DB the first sign-up takes over all data.
+  Test against a copy (run the image on another port with a copied `/app/data`).
 
 ## Gotchas (Windows dev machine)
 

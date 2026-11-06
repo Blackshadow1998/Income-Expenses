@@ -14,15 +14,22 @@ SQLite เบาที่สุด: ฝังอยู่ในโปรแก�
 
 ## วิธีรัน
 
-### 1) หลังบ้าน (ใน Docker — ไม่ต้องติดตั้ง Go)
+### 1) ใช้งานจริง (Docker — เว็บ + API ในตัวเดียว)
 
 ```bash
 docker compose up -d --build
 ```
 
-API จะอยู่ที่ http://localhost:8080 (ทดสอบ: http://localhost:8080/api/health)
+image จะ build หน้าเว็บ (`expo export`) แล้ว Go เสิร์ฟทั้งหน้าเว็บและ API ที่พอร์ตเดียว — เปิดเครื่องแล้วใช้ได้เลย
+(`restart: unless-stopped`)
 
-### 2) หน้าบ้าน
+- บนคอม: http://localhost:8080 · มือถือผ่าน Tailscale: http://<IP Tailscale ของคอม>:8080
+- API: http://localhost:8080/api/health
+- มือถือ: เมนูเบราว์เซอร์ → "เพิ่มลงหน้าจอหลัก" (มี manifest + ไอคอน; แบบเต็มจอต้องเปิดผ่าน HTTPS
+  เช่น `tailscale serve` หลังเปิด HTTPS Certificates ใน Tailscale admin)
+- แก้หน้าเว็บแล้วต้อง `docker compose up -d --build` ใหม่ถึงจะเห็นในตัวจริง
+
+### 2) หน้าบ้านโหมดพัฒนา (hot reload)
 
 ```bash
 cd frontend

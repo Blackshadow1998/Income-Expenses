@@ -1,0 +1,14 @@
+# Build context is the repo root; keep it small and never send personal data to the build.
+**/node_modules
+**/.expo
+**/dist
+.git
+backups
+backend/data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+.env
+.env.*
+.claude
+**/.claude

@@ -58,6 +58,7 @@ type API struct {
 	db       *sql.DB
 	slipsDir string // uploaded slip images
 	imageKey []byte // signs slip image links (see slipImageURL)
+	webDir   string // exported web app; "" = API only
 }
 
 func (a *API) routes() http.Handler {
@@ -97,6 +98,11 @@ func (a *API) routes() http.Handler {
 	data("POST /api/slips", a.uploadSlips)
 	data("GET /api/slips/{id}", a.getSlip)
 	data("DELETE /api/slips/{id}", a.deleteSlip)
+
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { notFound(w) })
+	if a.webDir != "" {
+		mux.Handle("/", webApp(a.webDir))
+	}
 	return cors(mux)
 }
 

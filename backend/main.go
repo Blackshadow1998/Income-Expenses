@@ -37,6 +37,10 @@ func main() {
 		logger.Fatalf("image key: %v", err)
 	}
 	api := &API{db: db, slipsDir: slipsDir, imageKey: imageKey}
+	if dir := getenv("WEB_DIR", "./web"); fileExists(dir + "/index.html") {
+		api.webDir = dir
+		logger.Printf("serving web app from %s", dir)
+	}
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           logRequests(api.routes()),
@@ -73,6 +77,11 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func dirOf(path string) string {

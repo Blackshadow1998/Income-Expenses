@@ -1,12 +1,15 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { Platform } from 'react-native';
 
-// Web talks to the API on the same host that served the page, so opening http://<PC-IP>:8081 on a
-// phone's browser works too. iOS simulator uses localhost; the Android emulator uses 10.0.2.2.
+// Web: the built site is served by the API itself, so it uses the same origin (works behind any
+// host name / HTTPS proxy). The dev server (expo start, port 8081) talks to port 8080 on the same host.
+// iOS simulator uses localhost; the Android emulator uses 10.0.2.2.
 // For the native app on a physical phone set EXPO_PUBLIC_API_URL=http://<your-PC-IP>:8080 in frontend/.env
 const DEFAULT_URL =
   Platform.OS === 'web' && typeof window !== 'undefined'
-    ? `http://${window.location.hostname}:8080`
+    ? __DEV__
+      ? `http://${window.location.hostname}:8080`
+      : ''
     : Platform.OS === 'android'
       ? 'http://10.0.2.2:8080'
       : 'http://localhost:8080';

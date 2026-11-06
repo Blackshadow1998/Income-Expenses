@@ -1,0 +1,24 @@
+# Personal financial data — never commit
+backups/
+backend/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Dependencies / build output
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db

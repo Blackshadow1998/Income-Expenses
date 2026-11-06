@@ -1,0 +1,12 @@
+services:
+  api:
+    build: ./backend
+    container_name: income-expenses-api
+    ports:
+      - "8080:8080"
+    volumes:
+      - income_expenses_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  income_expenses_data:

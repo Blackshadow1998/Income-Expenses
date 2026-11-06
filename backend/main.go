@@ -50,6 +50,9 @@ func main() {
 	// SQLite folds its WAL file back into the main .db file.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if dir := getenv("BACKUP_DIR", ""); dir != "" {
+		go runBackups(ctx, db, dir, 30)
+	}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

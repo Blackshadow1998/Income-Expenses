@@ -146,6 +146,13 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 
 ## สำรองข้อมูล
 
+**อัตโนมัติ:** API สำรอง DB วันละครั้ง (`VACUUM INTO` — ไม่ต้องหยุดระบบ) ไปที่ `backups/auto/income_expenses-YYYY-MM-DD.db`
+บนดิสก์ของคอม (นอก Docker volume) เก็บ 30 ไฟล์ล่าสุด ตั้งค่าด้วย `BACKUP_DIR` ใน `docker-compose.yml`
+
+กู้คืน: `docker compose stop` → `docker cp backups/auto/<ไฟล์>.db income-expenses-api:/app/data/income_expenses.db` → `docker compose start`
+
+**สำรองเอง:**
+
 หยุด container ก่อน (ให้ SQLite เขียนข้อมูลจากไฟล์ WAL ลงไฟล์หลักให้ครบ) แล้วค่อย copy:
 
 ```bash

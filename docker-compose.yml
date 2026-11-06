@@ -6,8 +6,11 @@ services:
     container_name: income-expenses-api
     ports:
       - "8080:8080"
+    environment:
+      BACKUP_DIR: /app/backups # daily copy of the DB, newest 30 kept
     volumes:
       - income_expenses_data:/app/data
+      - ./backups/auto:/app/backups # on the PC's disk, outside the Docker volume (gitignored)
     restart: unless-stopped
 
 volumes:

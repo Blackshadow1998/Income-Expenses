@@ -73,6 +73,7 @@ func (a *API) routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/pin", a.withSession(a.setPIN))
 	mux.HandleFunc("POST /api/auth/lock", a.withSession(a.lock))
 	mux.HandleFunc("POST /api/auth/logout", a.withSession(a.logout))
+	mux.HandleFunc("POST /api/auth/password", a.withSession(a.changePassword))
 	mux.HandleFunc("GET /api/slips/{id}/image", a.slipImage) // signed link instead of a session
 
 	// Everything below needs a signed-in, PIN-unlocked session and only sees that user's data.

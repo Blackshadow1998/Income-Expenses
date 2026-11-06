@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -26,6 +27,17 @@ func main() {
 		logger.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
+
+	// Admin command: /app/api reset-password <username>
+	if len(os.Args) == 3 && os.Args[1] == "reset-password" {
+		temp, err := resetPassword(context.Background(), db, os.Args[2])
+		if err != nil {
+			db.Close()
+			logger.Fatalf("reset-password: %v", err)
+		}
+		fmt.Printf("รหัสผ่านชั่วคราวของ %s: %s\nเข้าสู่ระบบด้วยรหัสนี้ แล้วเปลี่ยนรหัสผ่านที่หน้า ตั้งค่า\n", os.Args[2], temp)
+		return
+	}
 
 	slipsDir := dirOf(dbPath) + "/slips"
 	if err := os.MkdirAll(slipsDir, 0o755); err != nil {

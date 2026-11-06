@@ -30,6 +30,7 @@ export default function SettingsScreen() {
         </Text>
         <Button title="🔒 ล็อกตอนนี้" variant="outline" onPress={lockNow} />
         <Button title="เปลี่ยน PIN" variant="outline" onPress={() => router.push('/change-pin')} />
+        <Button title="เปลี่ยนรหัสผ่าน" variant="outline" onPress={() => router.push('/change-password')} />
       </Card>
 
       <Button title="ออกจากระบบ" variant="danger" onPress={onSignOut} />

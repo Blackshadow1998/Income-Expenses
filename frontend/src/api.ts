@@ -251,6 +251,8 @@ export const api = {
     unlock: (pin: string) => request<void>('/auth/unlock', post({ pin })),
     /** First PIN, a reset right after a password sign-in (no currentPin), or a change. */
     setPin: (pin: string, currentPin?: string) => request<void>('/auth/pin', post({ pin, current_pin: currentPin ?? '' })),
+    changePassword: (current: string, next: string) =>
+      request<void>('/auth/password', post({ current_password: current, new_password: next })),
     lock: () => request<void>('/auth/lock', post()),
     logout: () => request<void>('/auth/logout', post()),
     ping: () => request<void>('/auth/ping', post()),

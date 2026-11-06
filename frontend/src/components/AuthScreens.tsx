@@ -118,9 +118,11 @@ export function SignInScreen() {
             </Pressable>
           </Card>
         </FadeIn>
-        {signup && (
-          <Text style={styles.note}>หลังสมัครจะให้ตั้ง PIN 6 หลัก ไว้ปลดล็อกแอปครั้งต่อไป</Text>
-        )}
+        <Text style={styles.note}>
+          {signup
+            ? 'หลังสมัครจะให้ตั้ง PIN 6 หลัก ไว้ปลดล็อกแอปครั้งต่อไป'
+            : 'ลืมรหัสผ่าน? ให้ผู้ดูแลเครื่องออกรหัสชั่วคราวให้ แล้วเปลี่ยนที่หน้า ตั้งค่า'}
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

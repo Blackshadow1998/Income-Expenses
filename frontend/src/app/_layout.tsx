@@ -52,6 +52,7 @@ function Gate() {
         <Stack.Screen name="account" options={{ title: 'บัญชี' }} />
         <Stack.Screen name="change-pin" options={{ title: 'เปลี่ยน PIN' }} />
         <Stack.Screen name="transfer" options={{ title: 'โอนระหว่างบัญชี' }} />
+        <Stack.Screen name="change-password" options={{ title: 'เปลี่ยนรหัสผ่าน' }} />
       </Stack>
       {status === 'needsPin' && (
         <Overlay>

@@ -54,7 +54,9 @@ const selectAccount = `
 	       a.opening_satang + COALESCE((
 	           SELECT SUM(t.amount_satang * c.direction)
 	           FROM transactions t JOIN categories c ON c.id = t.category_id
-	           WHERE t.account_id = a.id), 0),
+	           WHERE t.account_id = a.id), 0) + COALESCE((
+	           SELECT SUM(CASE WHEN tr.to_account_id = a.id THEN tr.amount_satang ELSE -tr.amount_satang END)
+	           FROM transfers tr WHERE tr.from_account_id = a.id OR tr.to_account_id = a.id), 0),
 	       (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id)
 	FROM accounts a
 	JOIN banks b ON b.id = a.bank_id
@@ -235,7 +237,9 @@ func (a *API) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	uid := userID(r)
 	var count int
 	if err := a.db.QueryRowContext(r.Context(),
-		`SELECT COUNT(*) FROM transactions WHERE account_id = ? AND user_id = ?`, id, uid).Scan(&count); err != nil {
+		`SELECT (SELECT COUNT(*) FROM transactions WHERE account_id = ?1 AND user_id = ?2) +
+		        (SELECT COUNT(*) FROM transfers WHERE (from_account_id = ?1 OR to_account_id = ?1) AND user_id = ?2)`,
+		id, uid).Scan(&count); err != nil {
 		serverError(w, err)
 		return
 	}

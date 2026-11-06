@@ -136,6 +136,8 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | GET | `/api/accounts/options` | รายชื่อธนาคาร และประเภทบัญชี |
 | GET/PUT/DELETE | `/api/accounts/{id}` | ดู / แก้ไข / ลบ บัญชี |
 | POST | `/api/accounts` | เพิ่มบัญชี `{bank_id, type_id, name, opening_balance}` |
+| POST | `/api/transfers` | โอนระหว่างบัญชีตัวเอง `{date, from_account_id, to_account_id, amount, note}` (ไม่นับเป็นรับ/จ่าย) |
+| GET/PUT/DELETE | `/api/transfers/{id}` | ดู / แก้ไข / ลบ รายการโอน |
 | POST | `/api/slips` | อัปโหลดสลิป (multipart field `files`, หลายไฟล์ได้) → อ่านแล้วบันทึกเป็นรอคอนเฟิร์ม |
 | GET | `/api/slips/{id}` | ข้อมูลสลิป (มี `image_url` = ลิงก์รูปแบบลงลายเซ็น อายุ 1–2 ชม.) |
 | GET | `/api/slips/{id}/image?exp=&sig=` | รูปสลิป (ใช้ลิงก์จาก `image_url` ไม่ต้องส่ง token) |

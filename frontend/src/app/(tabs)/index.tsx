@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Account, api, Category, MonthData, Slip, Transaction } from '@/api';
+import { Account, api, Category, MonthData, Slip, Transaction, Transfer } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
 import { AnimatedNumber, FadeIn, GrowBar, PressScale, Skeleton } from '@/components/motion';
 import { PendingSlipCard } from '@/components/PendingSlipCard';
@@ -133,8 +133,26 @@ export default function MonthScreen() {
       params: { ...(month ? { month } : {}), ...(accountId ? { accountId: String(accountId) } : {}) },
     });
   const goEdit = (t: Transaction) => router.push({ pathname: '/transaction', params: { id: String(t.id) } });
+  const goTransfer = (tr?: Transfer) =>
+    router.push({
+      pathname: '/transfer',
+      params: tr
+        ? { id: String(tr.id) }
+        : { ...(month ? { month } : {}), ...(accountId ? { accountId: String(accountId) } : {}) },
+    });
 
-  const days = data ? groupByDay(data.items) : [];
+  const onDeleteTransfer = async (tr: Transfer) => {
+    if (!(await confirmAsync('ลบรายการโอน', `ต้องการลบรายการโอน ${money(tr.amount)} บาท วันที่ ${dateLabel(tr.date)} ใช่หรือไม่?`))) return;
+    try {
+      await api.removeTransfer(tr.id);
+      await loadAll(monthRef.current);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const days = data ? groupByDay(data.items, data.transfers) : [];
+  const entryCount = data ? data.items.length + data.transfers.length : 0;
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -199,14 +217,15 @@ export default function MonthScreen() {
 
           <FadeIn delay={200} style={styles.actions}>
             <Button
-              title={uploading ? 'กำลังอ่าน...' : 'อ่านสลิป'}
+              title={uploading ? 'กำลังอ่าน...' : 'สลิป'}
               icon="📷"
               variant="soft"
               onPress={onReadSlips}
               disabled={uploading}
               style={{ flex: 1 }}
             />
-            <Button title="เพิ่มรายการ" icon="＋" onPress={goAdd} style={{ flex: 1 }} />
+            <Button title="โอน" icon="⇄" variant="soft" onPress={() => goTransfer()} style={{ flex: 1 }} />
+            <Button title="เพิ่ม" icon="＋" onPress={goAdd} style={{ flex: 1.2 }} />
           </FadeIn>
 
           {data.pending.length > 0 && (
@@ -220,11 +239,11 @@ export default function MonthScreen() {
             </View>
           )}
 
-          <Text style={styles.h2}>รายการ ({data.items.length})</Text>
+          <Text style={styles.h2}>รายการ ({entryCount})</Text>
 
           {loading ? (
             <ListSkeleton />
-          ) : data.items.length === 0 && data.pending.length === 0 ? (
+          ) : entryCount === 0 && data.pending.length === 0 ? (
             <FadeIn>
               <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 28 }}>
                 <Text style={{ fontSize: 36 }}>🪴</Text>
@@ -236,15 +255,28 @@ export default function MonthScreen() {
               <FadeIn key={`${month}-${day.date}`} delay={Math.min(di * 70, 420)} style={{ gap: 6 }}>
                 <View style={styles.dayHeader}>
                   <Text style={styles.dayLabel}>{dateLabel(day.date)}</Text>
-                  <Text style={[styles.dayNet, { color: day.net >= 0 ? COLORS.in : COLORS.out }]}>
-                    {day.net >= 0 ? '+' : '−'}
-                    {money(Math.abs(day.net))}
-                  </Text>
+                  {day.entries.some((e) => e.kind === 'txn') && (
+                    <Text style={[styles.dayNet, { color: day.net >= 0 ? COLORS.in : COLORS.out }]}>
+                      {day.net >= 0 ? '+' : '−'}
+                      {money(Math.abs(day.net))}
+                    </Text>
+                  )}
                 </View>
                 <Card style={{ padding: 0, overflow: 'hidden' }}>
-                  {day.items.map((t, i) => (
-                    <TxnRow key={t.id} t={t} first={i === 0} onPress={() => goEdit(t)} onDelete={() => onDelete(t)} />
-                  ))}
+                  {day.entries.map((e, i) =>
+                    e.kind === 'txn' ? (
+                      <TxnRow key={`t${e.t.id}`} t={e.t} first={i === 0} onPress={() => goEdit(e.t)} onDelete={() => onDelete(e.t)} />
+                    ) : (
+                      <TransferRow
+                        key={`tr${e.tr.id}`}
+                        tr={e.tr}
+                        accountId={accountId}
+                        first={i === 0}
+                        onPress={() => goTransfer(e.tr)}
+                        onDelete={() => onDeleteTransfer(e.tr)}
+                      />
+                    ),
+                  )}
                 </Card>
               </FadeIn>
             ))
@@ -348,6 +380,39 @@ function TxnRow({ t, first, onPress, onDelete }: { t: Transaction; first: boolea
   );
 }
 
+/** Transfer between own accounts: neutral colour, or +/− when the list is filtered to one of its accounts. */
+function TransferRow({ tr, accountId, first, onPress, onDelete }: {
+  tr: Transfer;
+  accountId: number | null;
+  first: boolean;
+  onPress: () => void;
+  onDelete: () => void;
+}) {
+  const sign = accountId === tr.to_account_id ? '+' : accountId === tr.from_account_id ? '−' : '';
+  return (
+    <PressScale onPress={onPress} scaleTo={0.98} style={[styles.row, !first && styles.rowDivider]}>
+      <IconBubble icon="⇄" tint={COLORS.primarySoft} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {tr.note || 'โอนระหว่างบัญชี'}
+        </Text>
+        <Text style={styles.rowSub} numberOfLines={2}>
+          {tr.from_label} → {tr.to_label}
+        </Text>
+      </View>
+      <View style={{ alignItems: 'flex-end', gap: 6 }}>
+        <Text style={[styles.amount, { color: sign === '+' ? COLORS.in : sign === '−' ? COLORS.out : COLORS.primary }]}>
+          {sign}
+          {money(tr.amount)}
+        </Text>
+        <PressScale onPress={onDelete} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel="ลบรายการโอน">
+          <Text style={{ fontSize: 13 }}>🗑️</Text>
+        </PressScale>
+      </View>
+    </PressScale>
+  );
+}
+
 function ListSkeleton() {
   return (
     <Card style={{ gap: 14 }}>
@@ -365,16 +430,23 @@ function ListSkeleton() {
   );
 }
 
-function groupByDay(items: Transaction[]) {
-  const days: { date: string; net: number; items: Transaction[] }[] = [];
-  for (const t of items) {
+type Entry = { kind: 'txn'; date: string; t: Transaction } | { kind: 'transfer'; date: string; tr: Transfer };
+
+/** Newest day first; a day's net counts income/expense only (transfers move money, they don't add or spend it). */
+function groupByDay(items: Transaction[], transfers: Transfer[]) {
+  const entries: Entry[] = [
+    ...items.map((t) => ({ kind: 'txn' as const, date: t.date, t })),
+    ...transfers.map((tr) => ({ kind: 'transfer' as const, date: tr.date, tr })),
+  ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const days: { date: string; net: number; entries: Entry[] }[] = [];
+  for (const e of entries) {
     let d = days[days.length - 1];
-    if (!d || d.date !== t.date) {
-      d = { date: t.date, net: 0, items: [] };
+    if (!d || d.date !== e.date) {
+      d = { date: e.date, net: 0, entries: [] };
       days.push(d);
     }
-    d.items.push(t);
-    d.net += t.direction * t.amount;
+    d.entries.push(e);
+    if (e.kind === 'txn') d.net += e.t.direction * e.t.amount;
   }
   return days;
 }

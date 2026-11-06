@@ -98,6 +98,10 @@ func (a *API) routes() http.Handler {
 	data("POST /api/slips", a.uploadSlips)
 	data("GET /api/slips/{id}", a.getSlip)
 	data("DELETE /api/slips/{id}", a.deleteSlip)
+	data("POST /api/transfers", a.createTransfer)
+	data("GET /api/transfers/{id}", a.getTransfer)
+	data("PUT /api/transfers/{id}", a.updateTransfer)
+	data("DELETE /api/transfers/{id}", a.deleteTransfer)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { notFound(w) })
 	if a.webDir != "" {
@@ -244,7 +248,7 @@ func (a *API) getBalance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]float64{"balance": bal})
 }
 
-// balance of one account, or of everything when accountID is 0.
+// balance of one account, or of everything when accountID is 0 (transfers between accounts cancel out then).
 func (a *API) balance(r *http.Request, accountID int64) (float64, error) {
 	var satang int64
 	err := a.db.QueryRowContext(r.Context(), `
@@ -252,7 +256,10 @@ func (a *API) balance(r *http.Request, accountID int64) (float64, error) {
 			(SELECT COALESCE(SUM(opening_satang), 0) FROM accounts WHERE user_id = ?2 AND (?1 = 0 OR id = ?1)) +
 			(SELECT COALESCE(SUM(t.amount_satang * c.direction), 0)
 			 FROM transactions t JOIN categories c ON c.id = t.category_id
-			 WHERE t.user_id = ?2 AND (?1 = 0 OR t.account_id = ?1))`, accountID, userID(r)).Scan(&satang)
+			 WHERE t.user_id = ?2 AND (?1 = 0 OR t.account_id = ?1)) +
+			(SELECT COALESCE(SUM(CASE WHEN to_account_id = ?1 THEN amount_satang ELSE -amount_satang END), 0)
+			 FROM transfers WHERE user_id = ?2 AND ?1 <> 0 AND (from_account_id = ?1 OR to_account_id = ?1))`,
+		accountID, userID(r)).Scan(&satang)
 	return fromSatang(satang), err
 }
 
@@ -316,10 +323,16 @@ func (a *API) listTransactions(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	transfers, err := a.monthTransfers(r.Context(), userID(r), start.Format("2006-01-02"), end.Format("2006-01-02"), accountID)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"month":   month,
-		"items":   items,
-		"pending": pending,
+		"month":     month,
+		"items":     items,
+		"transfers": transfers, // not part of the in/out totals
+		"pending":   pending,
 		"totals": map[string]any{
 			"in":          fromSatang(totalIn),
 			"out":         fromSatang(totalOut),

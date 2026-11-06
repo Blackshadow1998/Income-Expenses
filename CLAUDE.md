@@ -34,7 +34,9 @@ cd frontend && npx expo start --web --port 8081                                #
 
 - Money is stored as integer **satang** (`amount_satang`); the API speaks baht floats. Convert with `toSatang`/`fromSatang`.
 - Categories: รับ(+1) จ่าย(−1) ให้ยืม(−1) กู้(+1) — `direction` decides the sign. Subcategories ("รายการ") belong to one category.
-- Balance = sum of account opening balances + signed transactions. Transactions saved before accounts existed have `account_id NULL` ("ไม่ระบุบัญชี") and still count in the total.
+- Transfers (`transfers` table, `transfers.go`) move money between a user's own accounts: they change both account
+  balances, cancel out in the all-accounts total, and are never part of in/out totals.
+- Balance = sum of account opening balances + signed transactions (+ transfers for a single account). Transactions saved before accounts existed have `account_id NULL` ("ไม่ระบุบัญชี") and still count in the total.
 - New/edited transactions **require** an account; payee ("ผู้รับ") and subcategory are optional.
 - Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`). Deleting that transaction deletes the slip + image.
 - Deleting an account with transactions is refused (409).

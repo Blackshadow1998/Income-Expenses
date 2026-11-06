@@ -141,6 +141,23 @@ CREATE TABLE IF NOT EXISTS sessions (
 	pin_failures   INTEGER NOT NULL DEFAULT 0,
 	created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Money moved between two of a user's own accounts: changes both balances, the total stays
+-- the same, and it is neither income nor expense.
+CREATE TABLE IF NOT EXISTS transfers (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id         INTEGER NOT NULL REFERENCES users(id),
+	txn_date        TEXT    NOT NULL,             -- YYYY-MM-DD
+	from_account_id INTEGER NOT NULL REFERENCES accounts(id),
+	to_account_id   INTEGER NOT NULL REFERENCES accounts(id),
+	amount_satang   INTEGER NOT NULL CHECK (amount_satang > 0),
+	note            TEXT    NOT NULL DEFAULT '',
+	created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+	updated_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+	CHECK (from_account_id <> to_account_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_transfers_user_date ON transfers(user_id, txn_date);
 `
 
 // Uploaded bank slips. A slip stays "pending" (not counted in any balance) until the

@@ -129,9 +129,30 @@ export interface AccountsSummary {
   total: number;
 }
 
+/** Money moved between two of the user's own accounts (not income or expense). */
+export interface Transfer {
+  id: number;
+  date: string;
+  from_account_id: number;
+  from_label: string;
+  to_account_id: number;
+  to_label: string;
+  amount: number;
+  note: string;
+}
+
+export interface TransferInput {
+  date: string;
+  from_account_id: number;
+  to_account_id: number;
+  amount: number;
+  note: string;
+}
+
 export interface MonthData {
   month: string;
   items: Transaction[];
+  transfers: Transfer[]; // not part of totals
   pending: Slip[]; // slips waiting for confirmation in this month
   totals: { in: number; out: number; net: number; by_category: Partial<Record<CategoryCode, number>> };
   balance: number;
@@ -249,6 +270,12 @@ export const api = {
   remove: (id: number) => request<void>(`/transactions/${id}`, { method: 'DELETE' }),
   yearly: (year: number, accountId?: number | null) =>
     request<YearData>(`/summary/yearly?year=${year}${accountId ? `&account_id=${accountId}` : ''}`),
+
+  getTransfer: (id: number) => request<Transfer>(`/transfers/${id}`),
+  createTransfer: (body: TransferInput) => request<Transfer>('/transfers', post(body)),
+  updateTransfer: (id: number, body: TransferInput) =>
+    request<Transfer>(`/transfers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  removeTransfer: (id: number) => request<void>(`/transfers/${id}`, { method: 'DELETE' }),
 
   accounts: () => request<AccountsSummary>('/accounts'),
   accountOptions: () => request<{ banks: Option[]; types: Option[] }>('/accounts/options'),

@@ -1,13 +1,16 @@
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Account, api, Category, MonthData, Slip, Transaction } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
+import { AnimatedNumber, FadeIn, GrowBar, PressScale, Skeleton } from '@/components/motion';
 import { PendingSlipCard } from '@/components/PendingSlipCard';
-import { Button, Card, ErrorBox, Loading, Stepper } from '@/components/ui';
+import { Button, Card, ErrorBox, IconBubble, Stepper } from '@/components/ui';
 import {
-  CATEGORY_COLORS, COLORS, confirmAsync, currentMonth, dateLabel, money, monthLabel, MONTHS_SHORT, shiftMonth, showError, showInfo,
+  CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, currentMonth, dateLabel, GRADIENTS, money, monthLabel,
+  MONTHS_SHORT, SHADOW, shiftMonth, showError, showInfo,
 } from '@/format';
 import { takePendingMonth } from '@/state';
 
@@ -131,141 +134,287 @@ export default function MonthScreen() {
     });
   const goEdit = (t: Transaction) => router.push({ pathname: '/transaction', params: { id: String(t.id) } });
 
+  const days = data ? groupByDay(data.items) : [];
+
   return (
     <ScrollView contentContainerStyle={styles.page}>
-      <Card style={{ gap: 12 }}>
-        <Stepper
-          label={month ? monthLabel(month) : '...'}
-          onPrev={() => month && loadMonth(shiftMonth(month, -1))}
-          onNext={() => month && loadMonth(shiftMonth(month, 1))}
-        />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+      <FadeIn>
+        <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+          <View style={[styles.blob, { width: 180, height: 180, top: -60, right: -40 }]} />
+          <View style={[styles.blob, { width: 120, height: 120, bottom: -50, left: -30 }]} />
+          <Stepper
+            light
+            label={month ? monthLabel(month) : '...'}
+            onPrev={() => month && loadMonth(shiftMonth(month, -1))}
+            onNext={() => month && loadMonth(shiftMonth(month, 1))}
+          />
+          <View style={{ alignItems: 'center', gap: 2, marginTop: 6 }}>
+            <Text style={styles.heroLabel}>{accountId ? 'เงินคงเหลือบัญชีนี้' : 'เงินคงเหลือทุกบัญชี'}</Text>
+            {data ? (
+              <AnimatedNumber value={data.balance} format={money} style={styles.heroValue} />
+            ) : (
+              <Skeleton style={{ width: 200, height: 40, backgroundColor: 'rgba(255,255,255,0.35)' }} />
+            )}
+            <Text style={styles.heroLabel}>บาท</Text>
+          </View>
+          <View style={styles.heroStats}>
+            <HeroStat icon="↓" label="เงินเข้า" value={data?.totals.in} dot="#4ade80" />
+            <HeroStat icon="↑" label="เงินออก" value={data?.totals.out} dot="#fca5a5" />
+          </View>
+          {data && (
+            <Text style={styles.heroNet}>
+              สุทธิเดือนนี้ {data.totals.net >= 0 ? '+' : ''}
+              {money(data.totals.net)}
+            </Text>
+          )}
+        </LinearGradient>
+      </FadeIn>
+
+      <FadeIn delay={80} style={{ gap: 10 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
           {months.map((m) => {
             const active = m === month;
             const [y, mm] = m.split('-').map(Number);
             return (
-              <Pressable key={m} onPress={() => loadMonth(m)} style={[styles.chip, active && styles.chipActive]}>
+              <PressScale key={m} onPress={() => loadMonth(m)} style={[styles.chip, active && styles.chipActive]}>
                 <Text style={[styles.chipText, active && { color: '#fff' }]}>
                   {MONTHS_SHORT[mm - 1]} {String(y + 543).slice(2)}
                 </Text>
-              </Pressable>
+              </PressScale>
             );
           })}
         </ScrollView>
         <AccountFilter accounts={accounts} value={accountId} onChange={selectAccount} />
-      </Card>
+      </FadeIn>
 
       {error ? (
         <ErrorBox message={error} onRetry={() => loadAll(monthRef.current)} />
       ) : !data ? (
-        <Loading />
+        <ListSkeleton />
       ) : (
         <>
-          <View style={styles.statsRow}>
-            <Stat label="เงินเข้า (เดือนนี้)" value={data.totals.in} color={COLORS.in} />
-            <Stat label="เงินออก (เดือนนี้)" value={data.totals.out} color={COLORS.out} />
-          </View>
-          <View style={styles.statsRow}>
-            <Stat label="สุทธิเดือนนี้" value={data.totals.net} color={data.totals.net >= 0 ? COLORS.in : COLORS.out} />
-            <Stat label={accountId ? 'เงินคงเหลือบัญชีนี้' : 'เงินคงเหลือทุกบัญชี'} value={data.balance} color={COLORS.primary} />
-          </View>
+          <FadeIn delay={140}>
+            <CategoryBreakdown key={`${month}-${accountId}`} categories={categories} totals={data.totals.by_category} />
+          </FadeIn>
 
-          <Card style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {categories.map((c) => (
-              <View key={c.id} style={[styles.catPill, { borderColor: CATEGORY_COLORS[c.code] }]}>
-                <Text style={{ color: CATEGORY_COLORS[c.code], fontWeight: '600' }}>{c.name}</Text>
-                <Text style={{ color: COLORS.text }}>{money(data.totals.by_category[c.code] ?? 0)}</Text>
-              </View>
-            ))}
-          </Card>
-
-          <View style={styles.listHeader}>
-            <Text style={styles.h2}>รายการ ({data.items.length})</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Button title={uploading ? 'กำลังอ่านสลิป...' : '📷 อ่านสลิป'} variant="outline" onPress={onReadSlips} disabled={uploading} />
-              <Button title="+ เพิ่มรายการ" onPress={goAdd} />
-            </View>
-          </View>
+          <FadeIn delay={200} style={styles.actions}>
+            <Button
+              title={uploading ? 'กำลังอ่าน...' : 'อ่านสลิป'}
+              icon="📷"
+              variant="soft"
+              onPress={onReadSlips}
+              disabled={uploading}
+              style={{ flex: 1 }}
+            />
+            <Button title="เพิ่มรายการ" icon="＋" onPress={goAdd} style={{ flex: 1 }} />
+          </FadeIn>
 
           {data.pending.length > 0 && (
             <View style={{ gap: 8 }}>
               <Text style={styles.pendingHeader}>🧾 รอคอนเฟิร์ม ({data.pending.length}) — ยังไม่นับรวมในยอดเงิน</Text>
-              {data.pending.map((sl) => (
-                <PendingSlipCard key={sl.id} slip={sl} onConfirm={() => goConfirm(sl)} onDelete={() => onDeleteSlip(sl)} />
+              {data.pending.map((sl, i) => (
+                <FadeIn key={sl.id} delay={240 + i * 50}>
+                  <PendingSlipCard slip={sl} onConfirm={() => goConfirm(sl)} onDelete={() => onDeleteSlip(sl)} />
+                </FadeIn>
               ))}
             </View>
           )}
 
-          {loading && <Loading />}
-          {!loading && data.items.length === 0 && data.pending.length === 0 && (
-            <Card>
-              <Text style={{ color: COLORS.muted, textAlign: 'center' }}>ยังไม่มีรายการในเดือนนี้</Text>
-            </Card>
-          )}
-          {!loading &&
-            data.items.map((t) => (
-              <Card key={t.id} style={styles.row}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={[styles.badge, { backgroundColor: CATEGORY_COLORS[t.category_code] }]}>
-                      <Text style={styles.badgeText}>{t.category_name}</Text>
-                    </View>
-                    <Text style={{ color: COLORS.muted }}>{dateLabel(t.date)}</Text>
-                  </View>
-                  <Text style={[styles.accountLine, !t.account_label && { color: COLORS.muted, fontStyle: 'italic' }]}>
-                    🏦 {t.account_label || 'ไม่ระบุบัญชี'}
-                  </Text>
-                  {!!t.slip_id && (
-                    <Text style={styles.accountLine} numberOfLines={1}>
-                      🧾 {t.slip_from || '-'} → {t.slip_to || '-'}
-                    </Text>
-                  )}
-                  {!!t.payee && <Text style={styles.payee}>👤 ผู้รับ: {t.payee}</Text>}
-                  {!!t.subcategory_name && <Text style={styles.subName}>{t.subcategory_name}</Text>}
-                  {!!t.note && <Text style={{ color: t.subcategory_name ? COLORS.muted : COLORS.text }}>{t.note}</Text>}
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <Text style={[styles.amount, { color: t.direction > 0 ? COLORS.in : COLORS.out }]}>
-                    {t.direction > 0 ? '+' : '−'}
-                    {money(t.amount)}
-                  </Text>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <Button title="แก้ไข" variant="outline" small onPress={() => goEdit(t)} />
-                    <Button title="ลบ" variant="danger" small onPress={() => onDelete(t)} />
-                  </View>
-                </View>
+          <Text style={styles.h2}>รายการ ({data.items.length})</Text>
+
+          {loading ? (
+            <ListSkeleton />
+          ) : data.items.length === 0 && data.pending.length === 0 ? (
+            <FadeIn>
+              <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 28 }}>
+                <Text style={{ fontSize: 36 }}>🪴</Text>
+                <Text style={{ color: COLORS.muted }}>ยังไม่มีรายการในเดือนนี้</Text>
               </Card>
-            ))}
+            </FadeIn>
+          ) : (
+            days.map((day, di) => (
+              <FadeIn key={`${month}-${day.date}`} delay={Math.min(di * 70, 420)} style={{ gap: 6 }}>
+                <View style={styles.dayHeader}>
+                  <Text style={styles.dayLabel}>{dateLabel(day.date)}</Text>
+                  <Text style={[styles.dayNet, { color: day.net >= 0 ? COLORS.in : COLORS.out }]}>
+                    {day.net >= 0 ? '+' : '−'}
+                    {money(Math.abs(day.net))}
+                  </Text>
+                </View>
+                <Card style={{ padding: 0, overflow: 'hidden' }}>
+                  {day.items.map((t, i) => (
+                    <TxnRow key={t.id} t={t} first={i === 0} onPress={() => goEdit(t)} onDelete={() => onDelete(t)} />
+                  ))}
+                </Card>
+              </FadeIn>
+            ))
+          )}
         </>
       )}
     </ScrollView>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+function HeroStat({ icon, label, value, dot }: { icon: string; label: string; value?: number; dot: string }) {
   return (
-    <Card style={{ flex: 1, gap: 4 }}>
-      <Text style={{ color: COLORS.muted, fontSize: 13 }}>{label}</Text>
-      <Text style={{ color, fontSize: 18, fontWeight: '700' }}>{money(value)}</Text>
+    <View style={styles.heroStat}>
+      <View style={[styles.heroIcon, { backgroundColor: dot }]}>
+        <Text style={{ color: '#1e1b4b', fontWeight: '900' }}>{icon}</Text>
+      </View>
+      <View style={{ flexShrink: 1 }}>
+        <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{label}</Text>
+        {value === undefined ? (
+          <Text style={styles.heroStatValue}>…</Text>
+        ) : (
+          <AnimatedNumber value={value} format={money} style={styles.heroStatValue} />
+        )}
+      </View>
+    </View>
+  );
+}
+
+/** Share of each category this month as one stacked bar, plus a legend with amounts. */
+function CategoryBreakdown({ categories, totals }: { categories: Category[]; totals: MonthData['totals']['by_category'] }) {
+  const sum = categories.reduce((s, c) => s + (totals[c.code] ?? 0), 0);
+  return (
+    <Card style={{ gap: 12 }}>
+      <Text style={styles.h3}>สัดส่วนเดือนนี้</Text>
+      <View style={styles.track}>
+        {sum > 0 &&
+          categories.map((c, i) => (
+            <GrowBar key={c.id} fraction={(totals[c.code] ?? 0) / sum} color={CATEGORY_COLORS[c.code]} delay={200 + i * 120} />
+          ))}
+      </View>
+      <View style={styles.legend}>
+        {categories.map((c) => {
+          const v = totals[c.code] ?? 0;
+          return (
+            <View key={c.id} style={styles.legendItem}>
+              <IconBubble icon={CATEGORY_ICONS[c.code]} tint={CATEGORY_TINTS[c.code]} size={34} />
+              <View style={{ flexShrink: 1 }}>
+                <Text style={{ color: COLORS.muted, fontSize: 12 }}>
+                  {c.name}
+                  {sum > 0 && v > 0 ? ` · ${Math.round((v / sum) * 100)}%` : ''}
+                </Text>
+                <Text style={{ color: COLORS.text, fontWeight: '700' }}>{money(v)}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
     </Card>
   );
 }
 
+function TxnRow({ t, first, onPress, onDelete }: { t: Transaction; first: boolean; onPress: () => void; onDelete: () => void }) {
+  const title = t.subcategory_name || t.note || t.category_name;
+  const sub = [t.subcategory_name || t.note ? t.category_name : '', t.account_label || 'ไม่ระบุบัญชี'].filter(Boolean).join(' · ');
+  return (
+    <PressScale onPress={onPress} scaleTo={0.98} style={[styles.row, !first && styles.rowDivider]}>
+      <IconBubble icon={CATEGORY_ICONS[t.category_code]} tint={CATEGORY_TINTS[t.category_code]} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={[styles.rowSub, !t.account_label && { fontStyle: 'italic' }]} numberOfLines={1}>
+          {sub}
+        </Text>
+        {!!t.payee && (
+          <Text style={styles.rowSub} numberOfLines={1}>
+            👤 {t.payee}
+          </Text>
+        )}
+        {!!t.slip_id && (
+          <Text style={styles.rowSub} numberOfLines={1}>
+            🧾 {t.slip_from || '-'} → {t.slip_to || '-'}
+          </Text>
+        )}
+        {!!t.subcategory_name && !!t.note && (
+          <Text style={[styles.rowSub, { color: COLORS.text }]} numberOfLines={2}>
+            {t.note}
+          </Text>
+        )}
+      </View>
+      <View style={{ alignItems: 'flex-end', gap: 6 }}>
+        <Text style={[styles.amount, { color: t.direction > 0 ? COLORS.in : COLORS.out }]}>
+          {t.direction > 0 ? '+' : '−'}
+          {money(t.amount)}
+        </Text>
+        <PressScale onPress={onDelete} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel="ลบรายการ">
+          <Text style={{ fontSize: 13 }}>🗑️</Text>
+        </PressScale>
+      </View>
+    </PressScale>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <Card style={{ gap: 14 }}>
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Skeleton style={{ width: 42, height: 42, borderRadius: 21 }} />
+          <View style={{ flex: 1, gap: 6 }}>
+            <Skeleton style={{ height: 12, width: '60%' }} />
+            <Skeleton style={{ height: 10, width: '40%' }} />
+          </View>
+          <Skeleton style={{ height: 14, width: 70 }} />
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+function groupByDay(items: Transaction[]) {
+  const days: { date: string; net: number; items: Transaction[] }[] = [];
+  for (const t of items) {
+    let d = days[days.length - 1];
+    if (!d || d.date !== t.date) {
+      d = { date: t.date, net: 0, items: [] };
+      days.push(d);
+    }
+    d.items.push(t);
+    d.net += t.direction * t.amount;
+  }
+  return days;
+}
+
 const styles = StyleSheet.create({
-  page: { padding: 16, gap: 12, maxWidth: 820, width: '100%', alignSelf: 'center' },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#eef0ff' },
-  chipActive: { backgroundColor: COLORS.primary },
-  chipText: { color: COLORS.primary, fontWeight: '600' },
-  statsRow: { flexDirection: 'row', gap: 12 },
-  catPill: { flexDirection: 'row', gap: 6, borderWidth: 1, borderRadius: 16, paddingVertical: 4, paddingHorizontal: 10 },
-  listHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  h2: { fontSize: 17, fontWeight: '700', color: COLORS.text },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  badge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { color: '#fff', fontWeight: '600', fontSize: 12 },
-  amount: { fontSize: 16, fontWeight: '700' },
-  subName: { color: COLORS.text, fontWeight: '600' },
-  accountLine: { color: COLORS.muted, fontSize: 12 },
-  payee: { color: COLORS.text, fontSize: 13 },
+  page: { padding: 16, gap: 14, maxWidth: 820, width: '100%', alignSelf: 'center', paddingBottom: 32 },
+  hero: { borderRadius: 24, padding: 18, gap: 12, overflow: 'hidden', boxShadow: '0px 12px 28px rgba(79, 70, 229, 0.35)' },
+  blob: { position: 'absolute', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.09)' },
+  heroLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13 },
+  heroValue: { color: '#fff', fontSize: 38, fontWeight: '800', letterSpacing: 0.5 },
+  heroStats: { flexDirection: 'row', gap: 10 },
+  heroStat: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  heroIcon: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  heroStatValue: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  heroNet: { color: 'rgba(255,255,255,0.9)', textAlign: 'center', fontSize: 13, fontWeight: '600' },
+  chip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary, ...SHADOW },
+  chipText: { color: COLORS.primary, fontWeight: '700' },
+  track: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: '#eef0f6' },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '50%' },
+  actions: { flexDirection: 'row', gap: 10 },
+  h2: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginTop: 4 },
+  h3: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  dayHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
+  dayLabel: { color: COLORS.muted, fontWeight: '700', fontSize: 13 },
+  dayNet: { fontWeight: '700', fontSize: 13 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: COLORS.card },
+  rowDivider: { borderTopWidth: 1, borderTopColor: COLORS.border },
+  rowTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  rowSub: { color: COLORS.muted, fontSize: 12 },
+  amount: { fontSize: 16, fontWeight: '800' },
+  trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center' },
   pendingHeader: { color: COLORS.pending, fontWeight: '700' },
 });

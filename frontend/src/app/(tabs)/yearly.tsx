@@ -1,11 +1,13 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Account, api, Category, YearData } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
 import { BarChart, BarSeries } from '@/components/BarChart';
-import { Button, Card, ErrorBox, Loading, Stepper } from '@/components/ui';
-import { CATEGORY_COLORS, COLORS, money, MONTHS_FULL, MONTHS_SHORT, pad2 } from '@/format';
+import { AnimatedNumber, FadeIn, PressScale, Skeleton } from '@/components/motion';
+import { Button, Card, ErrorBox, Stepper } from '@/components/ui';
+import { CATEGORY_COLORS, COLORS, GRADIENTS, money, MONTHS_FULL, MONTHS_SHORT, pad2 } from '@/format';
 import { setPendingMonth } from '@/state';
 
 type Mode = 'inout' | 'category';
@@ -74,98 +76,121 @@ export default function YearlyScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
-      <Card style={{ gap: 12 }}>
-        <Stepper label={`ปี ${year + 543} (${year})`} onPrev={() => load(year - 1)} onNext={() => load(year + 1)} />
-        <AccountFilter accounts={accounts} value={accountId} onChange={selectAccount} />
-      </Card>
+      <FadeIn>
+        <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+          <View style={[styles.blob, { width: 170, height: 170, top: -60, right: -40 }]} />
+          <Stepper light label={`ปี ${year + 543}`} onPrev={() => load(year - 1)} onNext={() => load(year + 1)} />
+          <View style={styles.statsRow}>
+            <Stat label="เงินเข้าทั้งปี" value={data?.totals.in} />
+            <Stat label="เงินออกทั้งปี" value={data?.totals.out} />
+            <Stat label="สุทธิทั้งปี" value={data?.totals.net} />
+          </View>
+        </LinearGradient>
+      </FadeIn>
+      <AccountFilter accounts={accounts} value={accountId} onChange={selectAccount} />
 
       {error ? (
         <ErrorBox message={error} onRetry={() => load(year)} />
       ) : !data ? (
-        <Loading />
+        <Skeleton style={{ height: 300, borderRadius: 18 }} />
       ) : (
         <>
-          <View style={styles.statsRow}>
-            <Stat label="เงินเข้าทั้งปี" value={data.totals.in} color={COLORS.in} />
-            <Stat label="เงินออกทั้งปี" value={data.totals.out} color={COLORS.out} />
-            <Stat label="สุทธิทั้งปี" value={data.totals.net} color={data.totals.net >= 0 ? COLORS.in : COLORS.out} />
-          </View>
-
-          <Card style={{ gap: 12 }}>
-            <View style={styles.modeRow}>
-              <Text style={styles.h2}>กราฟรายเดือน</Text>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                <Button title="เข้า/ออก" small variant={mode === 'inout' ? 'primary' : 'outline'} onPress={() => setMode('inout')} />
-                <Button title="แยกหมวด" small variant={mode === 'category' ? 'primary' : 'outline'} onPress={() => setMode('category')} />
+          <FadeIn delay={100}>
+            <Card style={{ gap: 12 }}>
+              <View style={styles.modeRow}>
+                <Text style={styles.h2}>กราฟรายเดือน</Text>
+                <View style={styles.segment}>
+                  {(['inout', 'category'] as const).map((m) => (
+                    <PressScale key={m} onPress={() => setMode(m)} style={[styles.segBtn, mode === m && styles.segBtnActive]}>
+                      <Text style={[styles.segText, mode === m && { color: COLORS.primary }]}>
+                        {m === 'inout' ? 'เข้า/ออก' : 'แยกหมวด'}
+                      </Text>
+                    </PressScale>
+                  ))}
+                </View>
               </View>
-            </View>
-            <BarChart
-              labels={MONTHS_SHORT}
-              series={series}
-              values={values}
-              selected={selected}
-              onSelect={(i) => setSelected(i === selected ? null : i)}
-            />
-            <Text style={{ color: COLORS.muted, fontSize: 12 }}>แตะที่เดือนเพื่อดูรายละเอียด</Text>
-          </Card>
+              <BarChart
+                labels={MONTHS_SHORT}
+                series={series}
+                values={values}
+                selected={selected}
+                onSelect={(i) => setSelected(i === selected ? null : i)}
+              />
+              <Text style={{ color: COLORS.muted, fontSize: 12 }}>แตะที่เดือนเพื่อดูรายละเอียด</Text>
+            </Card>
+          </FadeIn>
 
           {sel && (
-            <Card style={{ gap: 8 }}>
-              <Text style={styles.h2}>
-                {MONTHS_FULL[sel.month - 1]} {year + 543}
-              </Text>
-              {categories.map((c) => (
-                <View key={c.id} style={styles.line}>
-                  <Text style={{ color: CATEGORY_COLORS[c.code], fontWeight: '600' }}>{c.name}</Text>
-                  <Text>{money(sel.by_category[c.code] ?? 0)}</Text>
+            <FadeIn key={sel.month}>
+              <Card style={{ gap: 8 }}>
+                <Text style={styles.h2}>
+                  {MONTHS_FULL[sel.month - 1]} {year + 543}
+                </Text>
+                {categories.map((c) => (
+                  <View key={c.id} style={styles.line}>
+                    <Text style={{ color: CATEGORY_COLORS[c.code], fontWeight: '600' }}>{c.name}</Text>
+                    <Text>{money(sel.by_category[c.code] ?? 0)}</Text>
+                  </View>
+                ))}
+                <View style={[styles.line, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 8 }]}>
+                  <Text style={{ fontWeight: '700' }}>สุทธิ</Text>
+                  <Text style={{ fontWeight: '700', color: sel.net >= 0 ? COLORS.in : COLORS.out }}>{money(sel.net)}</Text>
                 </View>
-              ))}
-              <View style={[styles.line, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 8 }]}>
-                <Text style={{ fontWeight: '700' }}>สุทธิ</Text>
-                <Text style={{ fontWeight: '700', color: sel.net >= 0 ? COLORS.in : COLORS.out }}>{money(sel.net)}</Text>
-              </View>
-              <Button title="ดูรายการเดือนนี้" variant="outline" onPress={() => openMonth(sel.month - 1)} />
-            </Card>
+                <Button title="ดูรายการเดือนนี้" variant="soft" onPress={() => openMonth(sel.month - 1)} />
+              </Card>
+            </FadeIn>
           )}
 
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <View style={[styles.tr, styles.th]}>
-              <Text style={[styles.td, styles.tdMonth, styles.thText]}>เดือน</Text>
-              <Text style={[styles.td, styles.thText]}>เข้า</Text>
-              <Text style={[styles.td, styles.thText]}>ออก</Text>
-              <Text style={[styles.td, styles.thText]}>สุทธิ</Text>
-            </View>
-            {data.months.map((m) => (
-              <View key={m.month} style={styles.tr}>
-                <Text style={[styles.td, styles.tdMonth]} onPress={() => openMonth(m.month - 1)}>
-                  {MONTHS_SHORT[m.month - 1]}
-                </Text>
-                <Text style={[styles.td, { color: COLORS.in }]}>{money(m.in)}</Text>
-                <Text style={[styles.td, { color: COLORS.out }]}>{money(m.out)}</Text>
-                <Text style={[styles.td, { color: m.net >= 0 ? COLORS.text : COLORS.out, fontWeight: '600' }]}>{money(m.net)}</Text>
+          <FadeIn delay={180}>
+            <Card style={{ padding: 0, overflow: 'hidden' }}>
+              <View style={[styles.tr, styles.th]}>
+                <Text style={[styles.td, styles.tdMonth, styles.thText]}>เดือน</Text>
+                <Text style={[styles.td, styles.thText]}>เข้า</Text>
+                <Text style={[styles.td, styles.thText]}>ออก</Text>
+                <Text style={[styles.td, styles.thText]}>สุทธิ</Text>
               </View>
-            ))}
-          </Card>
+              {data.months.map((m) => (
+                <View key={m.month} style={styles.tr}>
+                  <Text style={[styles.td, styles.tdMonth]} onPress={() => openMonth(m.month - 1)}>
+                    {MONTHS_SHORT[m.month - 1]}
+                  </Text>
+                  <Text style={[styles.td, { color: COLORS.in }]}>{money(m.in)}</Text>
+                  <Text style={[styles.td, { color: COLORS.out }]}>{money(m.out)}</Text>
+                  <Text style={[styles.td, { color: m.net >= 0 ? COLORS.text : COLORS.out, fontWeight: '600' }]}>{money(m.net)}</Text>
+                </View>
+              ))}
+            </Card>
+          </FadeIn>
         </>
       )}
     </ScrollView>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+function Stat({ label, value }: { label: string; value?: number }) {
   return (
-    <Card style={{ flex: 1, gap: 4, padding: 12 }}>
-      <Text style={{ color: COLORS.muted, fontSize: 12 }}>{label}</Text>
-      <Text style={{ color, fontSize: 15, fontWeight: '700' }} numberOfLines={1} adjustsFontSizeToFit>
-        {money(value)}
-      </Text>
-    </Card>
+    <View style={styles.stat}>
+      <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{label}</Text>
+      {value === undefined ? (
+        <Text style={styles.statValue}>…</Text>
+      ) : (
+        <AnimatedNumber value={value} format={money} style={styles.statValue} />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 16, gap: 12, maxWidth: 820, width: '100%', alignSelf: 'center' },
+  page: { padding: 16, gap: 12, maxWidth: 820, width: '100%', alignSelf: 'center', paddingBottom: 32 },
+  hero: { borderRadius: 24, padding: 18, gap: 14, overflow: 'hidden', boxShadow: '0px 12px 28px rgba(79, 70, 229, 0.35)' },
+  blob: { position: 'absolute', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.09)' },
   statsRow: { flexDirection: 'row', gap: 8 },
+  stat: { flex: 1, gap: 2, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.14)' },
+  statValue: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  segment: { flexDirection: 'row', backgroundColor: '#eef0f6', borderRadius: 12, padding: 3 },
+  segBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10 },
+  segBtnActive: { backgroundColor: COLORS.card, boxShadow: '0px 2px 6px rgba(30, 27, 75, 0.12)' },
+  segText: { fontWeight: '700', color: COLORS.muted, fontSize: 13 },
   modeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   h2: { fontSize: 17, fontWeight: '700', color: COLORS.text },
   line: { flexDirection: 'row', justifyContent: 'space-between' },

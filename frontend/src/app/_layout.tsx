@@ -35,7 +35,18 @@ function Gate() {
         return false;
       }}
     >
-      <Stack key={user.id} screenOptions={{ contentStyle: { backgroundColor: COLORS.bg }, headerTitleAlign: 'center' }}>
+      <Stack
+        key={user.id}
+        screenOptions={{
+          contentStyle: { backgroundColor: COLORS.bg },
+          headerTitleAlign: 'center',
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: COLORS.bg },
+          headerTitleStyle: { fontWeight: '800', color: COLORS.text },
+          headerTintColor: COLORS.primary,
+          animation: 'slide_from_right',
+        }}
+      >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="transaction" options={{ title: 'รายการ' }} />
         <Stack.Screen name="account" options={{ title: 'บัญชี' }} />

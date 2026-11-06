@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: COLORS.pendingBorder,

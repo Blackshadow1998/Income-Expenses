@@ -1,6 +1,8 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { COLORS } from '../format';
+import { ActivityIndicator, Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { COLORS, GRADIENTS, SHADOW } from '../format';
+import { FadeIn, PressScale, Shake, ShakeHandle } from './motion';
 
 export const PIN_LENGTH = 6;
 
@@ -45,6 +47,11 @@ export function PinPad({
     Promise.resolve(onCompleteRef.current(digits)).finally(() => setDigits(''));
   }, [digits]);
 
+  const shaker = useRef<ShakeHandle>(null);
+  useEffect(() => {
+    if (error) shaker.current?.shake();
+  }, [error]);
+
   useEffect(() => {
     if (Platform.OS !== 'web' || !listenKeys) return;
     const onKey = (e: KeyboardEvent) => {
@@ -56,16 +63,20 @@ export function PinPad({
   }, [press, listenKeys]);
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.lock}>🔒</Text>
+    <FadeIn style={styles.wrap}>
+      <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.lock}>
+        <Text style={{ fontSize: 28 }}>🔒</Text>
+      </LinearGradient>
       <Text style={styles.title}>{title}</Text>
       {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
 
-      <View style={styles.dots} accessibilityLabel={`ใส่แล้ว ${digits.length} จาก ${PIN_LENGTH} หลัก`}>
-        {Array.from({ length: PIN_LENGTH }, (_, i) => (
-          <View key={i} style={[styles.dot, i < digits.length && styles.dotFilled]} />
-        ))}
-      </View>
+      <Shake ref={shaker}>
+        <View style={styles.dots} accessibilityLabel={`ใส่แล้ว ${digits.length} จาก ${PIN_LENGTH} หลัก`}>
+          {Array.from({ length: PIN_LENGTH }, (_, i) => (
+            <Dot key={i} filled={i < digits.length} />
+          ))}
+        </View>
+      </Shake>
       <View style={styles.status}>
         {busy ? <ActivityIndicator color={COLORS.primary} /> : !!error && <Text style={styles.error}>{error}</Text>}
       </View>
@@ -75,35 +86,64 @@ export function PinPad({
           k === '' ? (
             <View key={i} style={styles.key} />
           ) : (
-            <Pressable
+            <PressScale
               key={i}
               onPress={() => press(k)}
               accessibilityLabel={k === '⌫' ? 'ลบตัวเลข' : k}
-              style={({ pressed }) => [styles.key, k !== '⌫' && styles.keyDigit, pressed && styles.keyPressed]}
+              scaleTo={0.88}
+              style={[styles.key, k !== '⌫' && styles.keyDigit]}
             >
               <Text style={[styles.keyText, k === '⌫' && { fontSize: 22 }]}>{k}</Text>
-            </Pressable>
+            </PressScale>
           ),
         )}
       </View>
       {footer}
+    </FadeIn>
+  );
+}
+
+/** PIN dot that pops when a digit is entered. */
+function Dot({ filled }: { filled: boolean }) {
+  const v = useRef(new Animated.Value(filled ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(v, { toValue: filled ? 1 : 0, speed: 30, bounciness: 14, useNativeDriver: Platform.OS !== 'web' }).start();
+  }, [v, filled]);
+  return (
+    <View style={styles.dot}>
+      <Animated.View style={[styles.dotFill, { transform: [{ scale: v }] }]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: 10, padding: 24, width: '100%', maxWidth: 360, alignSelf: 'center' },
-  lock: { fontSize: 32 },
-  title: { fontSize: 20, fontWeight: '700', color: COLORS.text, textAlign: 'center' },
+  lock: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    boxShadow: '0px 10px 24px rgba(79, 70, 229, 0.35)',
+  },
+  title: { fontSize: 20, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
   subtitle: { color: COLORS.muted, textAlign: 'center' },
   dots: { flexDirection: 'row', gap: 14, marginTop: 12 },
-  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: COLORS.primary },
-  dotFilled: { backgroundColor: COLORS.primary },
+  dot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dotFill: { width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.primary },
   status: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 8 },
   error: { color: COLORS.out, textAlign: 'center' },
   keypad: { flexDirection: 'row', flexWrap: 'wrap', width: 3 * 76 + 2 * 12, gap: 12 }, // 3 keys per row
   key: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center' },
-  keyDigit: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  keyPressed: { backgroundColor: '#eef0ff' },
+  keyDigit: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, ...SHADOW },
   keyText: { fontSize: 28, fontWeight: '600', color: COLORS.text },
 });

@@ -17,13 +17,38 @@ export const CATEGORY_COLORS: Record<CategoryCode, string> = {
   borrow: '#2563eb',
 };
 
+export const CATEGORY_ICONS: Record<CategoryCode, string> = {
+  income: '💰',
+  expense: '💸',
+  lend: '🤝',
+  borrow: '🏦',
+};
+
+/** Light backgrounds behind each category's icon. */
+export const CATEGORY_TINTS: Record<CategoryCode, string> = {
+  income: '#dcfce7',
+  expense: '#fee2e2',
+  lend: '#ffedd5',
+  borrow: '#dbeafe',
+};
+
+/** Gradients for the coloured header cards (expo-linear-gradient colour lists). */
+export const GRADIENTS = {
+  primary: ['#4338ca', '#6d28d9', '#a21caf'] as const,
+  night: ['#1e1b4b', '#4338ca', '#7c3aed'] as const,
+};
+
+/** Soft card shadow; boxShadow works on web, iOS and Android. */
+export const SHADOW = { boxShadow: '0px 6px 20px rgba(30, 27, 75, 0.07)' } as const;
+
 export const COLORS = {
-  bg: '#f4f6fa',
+  bg: '#f4f5fb',
   card: '#ffffff',
   text: '#1f2937',
   muted: '#6b7280',
-  border: '#e5e7eb',
+  border: '#eceef5',
   primary: '#4f46e5',
+  primarySoft: '#eef0ff',
   in: '#16a34a',
   out: '#dc2626',
   pending: '#b45309', // slips waiting for confirmation

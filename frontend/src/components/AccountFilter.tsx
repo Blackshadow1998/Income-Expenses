@@ -1,6 +1,7 @@
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 import type { Account } from '../api';
 import { COLORS, shortAccountLabel } from '../format';
+import { PressScale } from './motion';
 
 /** Chips to show everything ("ทุกบัญชี") or just one account. null = all accounts. */
 export function AccountFilter({
@@ -18,13 +19,13 @@ export function AccountFilter({
     ...accounts.map((a) => ({ id: a.id, label: shortAccountLabel(a) })),
   ];
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
       {chips.map((c) => {
         const active = c.id === value;
         return (
-          <Pressable key={c.id ?? 'all'} onPress={() => onChange(c.id)} style={[styles.chip, active && styles.chipActive]}>
+          <PressScale key={c.id ?? 'all'} onPress={() => onChange(c.id)} style={[styles.chip, active && styles.chipActive]}>
             <Text style={[styles.text, active && { color: '#fff' }]}>🏦 {c.label}</Text>
-          </Pressable>
+          </PressScale>
         );
       })}
     </ScrollView>
@@ -33,13 +34,13 @@ export function AccountFilter({
 
 const styles = StyleSheet.create({
   chip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.card,
   },
-  chipActive: { backgroundColor: COLORS.text, borderColor: COLORS.text },
-  text: { color: COLORS.text, fontSize: 13 },
+  chipActive: { backgroundColor: '#1e1b4b', borderColor: '#1e1b4b' },
+  text: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
 });

@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Account, api, Budget, Category, Insights, MonthData, Slip, Transaction, Transfer } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
@@ -12,7 +12,7 @@ import { PendingSlipCard } from '@/components/PendingSlipCard';
 import { Button, Card, ErrorBox, IconBubble, Stepper } from '@/components/ui';
 import {
   CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, currentMonth, dateLabel, GRADIENTS, money, monthLabel,
-  MONTHS_SHORT, SHADOW, shiftMonth, showError, showInfo,
+  MONTHS_SHORT, SHADOW, shiftMonth, showError, showInfo, toISODate,
 } from '@/format';
 import { takePendingMonth } from '@/state';
 
@@ -30,6 +30,8 @@ export default function MonthScreen() {
   const [uploading, setUploading] = useState(false);
   const [slipMenu, setSlipMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The day whose entries are listed ('YYYY-MM-DD'), or 'all' for the whole month.
+  const [day, setDay] = useState('');
   const monthRef = useRef<string | null>(null);
   const reqId = useRef(0);
 
@@ -43,6 +45,8 @@ export default function MonthScreen() {
       const [d, b, ins] = await Promise.all([api.month(m, accountRef.current), api.budgets(m), api.insights(m)]);
       if (id === reqId.current) {
         setData(d);
+        // Keep the picked day while it's in this month (e.g. back from adding an entry), else pick one.
+        setDay((prev) => (prev === 'all' || prev.startsWith(m) ? prev : defaultDay(m, d)));
         setBudgets(b);
         setInsights(ins);
       }
@@ -147,10 +151,11 @@ export default function MonthScreen() {
 
   const goConfirm = (sl: Slip) => router.push({ pathname: '/transaction', params: { slipId: String(sl.id) } });
 
+  const dayParam = day && day !== 'all' ? { date: day } : {};
   const goAdd = () =>
     router.push({
       pathname: '/transaction',
-      params: { ...(month ? { month } : {}), ...(accountId ? { accountId: String(accountId) } : {}) },
+      params: { ...(month ? { month } : {}), ...dayParam, ...(accountId ? { accountId: String(accountId) } : {}) },
     });
   const goEdit = (t: Transaction) => router.push({ pathname: '/transaction', params: { id: String(t.id) } });
   const goTransfer = (tr?: Transfer) =>
@@ -158,7 +163,7 @@ export default function MonthScreen() {
       pathname: '/transfer',
       params: tr
         ? { id: String(tr.id) }
-        : { ...(month ? { month } : {}), ...(accountId ? { accountId: String(accountId) } : {}) },
+        : { ...(month ? { month } : {}), ...dayParam, ...(accountId ? { accountId: String(accountId) } : {}) },
     });
 
   const onDeleteTransfer = async (tr: Transfer) => {
@@ -171,8 +176,9 @@ export default function MonthScreen() {
     }
   };
 
-  const days = data ? groupByDay(data.items, data.transfers) : [];
-  const entryCount = data ? data.items.length + data.transfers.length : 0;
+  const allDays = data ? groupByDay(data.items, data.transfers) : [];
+  const days = day === 'all' ? allDays : allDays.filter((d) => d.date === day);
+  const entryCount = days.reduce((n, d) => n + d.entries.length, 0);
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -276,35 +282,48 @@ export default function MonthScreen() {
           )}
 
           <View style={styles.listHeader}>
-            <Text style={styles.h2}>รายการ ({entryCount})</Text>
+            <Text style={styles.h2}>
+              {day === 'all' || !day
+                ? 'รายการทั้งเดือน'
+                : day === toISODate(new Date())
+                  ? 'รายการวันนี้'
+                  : `รายการ ${Number(day.slice(8))} ${MONTHS_SHORT[Number(day.slice(5, 7)) - 1]}`}{' '}
+              ({entryCount})
+            </Text>
             <PressScale onPress={() => router.push('/search')} scaleTo={0.92} style={styles.searchBtn} accessibilityLabel="ค้นหารายการ">
               <Text style={{ color: COLORS.primary, fontWeight: '700' }}>🔍 ค้นหา</Text>
             </PressScale>
           </View>
 
+          {month && (
+            <DayStrip month={month} selected={day} marked={new Set(allDays.map((d) => d.date))} onSelect={setDay} />
+          )}
+
           {loading ? (
             <ListSkeleton />
-          ) : entryCount === 0 && data.pending.length === 0 ? (
-            <FadeIn>
+          ) : entryCount === 0 ? (
+            <FadeIn key={`${month}-${day}-empty`}>
               <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 28 }}>
                 <Text style={{ fontSize: 36 }}>🪴</Text>
-                <Text style={{ color: COLORS.muted }}>ยังไม่มีรายการในเดือนนี้</Text>
+                <Text style={{ color: COLORS.muted }}>
+                  {day === 'all' ? 'ยังไม่มีรายการในเดือนนี้' : `ไม่มีรายการวันที่ ${dateLabel(day)}`}
+                </Text>
               </Card>
             </FadeIn>
           ) : (
-            days.map((day, di) => (
-              <FadeIn key={`${month}-${day.date}`} delay={Math.min(di * 70, 420)} style={{ gap: 6 }}>
+            days.map((g, di) => (
+              <FadeIn key={`${month}-${g.date}`} delay={Math.min(di * 70, 420)} style={{ gap: 6 }}>
                 <View style={styles.dayHeader}>
-                  <Text style={styles.dayLabel}>{dateLabel(day.date)}</Text>
-                  {day.entries.some((e) => e.kind === 'txn') && (
-                    <Text style={[styles.dayNet, { color: day.net >= 0 ? COLORS.in : COLORS.out }]}>
-                      {day.net >= 0 ? '+' : '−'}
-                      {money(Math.abs(day.net))}
+                  <Text style={styles.dayLabel}>{dateLabel(g.date)}</Text>
+                  {g.entries.some((e) => e.kind === 'txn') && (
+                    <Text style={[styles.dayNet, { color: g.net >= 0 ? COLORS.in : COLORS.out }]}>
+                      {g.net >= 0 ? '+' : '−'}
+                      {money(Math.abs(g.net))}
                     </Text>
                   )}
                 </View>
                 <Card style={{ padding: 0, overflow: 'hidden' }}>
-                  {day.entries.map((e, i) =>
+                  {g.entries.map((e, i) =>
                     e.kind === 'txn' ? (
                       <TxnRow key={`t${e.t.id}`} t={e.t} first={i === 0} onPress={() => goEdit(e.t)} onDelete={() => onDelete(e.t)} />
                     ) : (
@@ -472,6 +491,71 @@ function ListSkeleton() {
   );
 }
 
+/** Today in the current month; otherwise the latest day that has entries, else the 1st. */
+function defaultDay(month: string, d: MonthData): string {
+  const today = toISODate(new Date());
+  if (today.startsWith(month)) return today;
+  const dates = [...d.items.map((t) => t.date), ...d.transfers.map((t) => t.date)].sort();
+  return dates[dates.length - 1] ?? `${month}-01`;
+}
+
+const WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+const DAY_W = 46;
+const DAY_GAP = 6;
+
+/** Horizontal day picker for the month: weekday + date, a dot on days with entries, "ทั้งเดือน" first. */
+function DayStrip({ month, selected, marked, onSelect }: {
+  month: string;
+  selected: string;
+  marked: Set<string>;
+  onSelect: (day: string) => void;
+}) {
+  const [y, m] = month.split('-').map(Number);
+  const count = new Date(y, m, 0).getDate();
+  const today = toISODate(new Date());
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const [width, setWidth] = useState(0);
+  // Keep the picked day in view (roughly centred); the "all" chip is about one day wide.
+  useEffect(() => {
+    const i = selected === 'all' ? -1 : Number(selected.slice(8)) - 1;
+    if (i < 0 || !width) return;
+    const x = (i + 1.5) * (DAY_W + DAY_GAP) - width / 2;
+    scroller.current?.scrollTo({ x: Math.max(0, x), animated: true });
+  }, [selected, width, month]);
+
+  return (
+    <ScrollView
+      ref={scroller}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      contentContainerStyle={{ gap: DAY_GAP, paddingVertical: 2 }}
+    >
+      <PressScale onPress={() => onSelect('all')} style={[styles.day, styles.dayAll, selected === 'all' && styles.dayOn]}>
+        <Text style={[styles.dayWeek, selected === 'all' && styles.dayTextOn]}>ทั้ง</Text>
+        <Text style={[styles.dayAllText, selected === 'all' && styles.dayTextOn]}>เดือน</Text>
+      </PressScale>
+      {Array.from({ length: count }, (_, i) => {
+        const iso = `${month}-${String(i + 1).padStart(2, '0')}`;
+        const on = iso === selected;
+        const weekday = new Date(y, m - 1, i + 1).getDay();
+        return (
+          <PressScale
+            key={iso}
+            onPress={() => onSelect(iso)}
+            accessibilityLabel={dateLabel(iso)}
+            style={[styles.day, iso === today && !on && styles.dayToday, on && styles.dayOn]}
+          >
+            <Text style={[styles.dayWeek, weekday === 0 && { color: COLORS.out }, on && styles.dayTextOn]}>{WEEKDAYS[weekday]}</Text>
+            <Text style={[styles.dayNum, on && styles.dayTextOn]}>{i + 1}</Text>
+            <View style={[styles.dayDot, marked.has(iso) && { backgroundColor: on ? '#fff' : COLORS.primary }]} />
+          </PressScale>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 type Entry = { kind: 'txn'; date: string; t: Transaction } | { kind: 'transfer'; date: string; tr: Transfer };
 
 /** Newest day first; a day's net counts income/expense only (transfers move money, they don't add or spend it). */
@@ -534,4 +618,22 @@ const styles = StyleSheet.create({
   amount: { fontSize: 16, fontWeight: '800' },
   trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.dangerSoft, alignItems: 'center', justifyContent: 'center' },
   pendingHeader: { color: COLORS.pending, fontWeight: '700' },
+  day: {
+    width: DAY_W,
+    paddingVertical: 7,
+    borderRadius: 14,
+    alignItems: 'center',
+    gap: 1,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  dayAll: { justifyContent: 'center' },
+  dayOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary, ...SHADOW },
+  dayToday: { borderColor: COLORS.primary, borderWidth: 1.5 },
+  dayWeek: { fontSize: 11, color: COLORS.muted, fontWeight: '600' },
+  dayNum: { fontSize: 17, fontWeight: '800', color: COLORS.text },
+  dayAllText: { fontSize: 13, fontWeight: '800', color: COLORS.text },
+  dayTextOn: { color: '#fff' },
+  dayDot: { width: 5, height: 5, borderRadius: 3, marginTop: 2, backgroundColor: 'transparent' },
 });

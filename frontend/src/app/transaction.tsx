@@ -12,6 +12,7 @@ export default function TransactionScreen() {
   const params = useLocalSearchParams<{
     id?: string; month?: string; accountId?: string; slipId?: string; category?: string; payee?: string; amount?: string;
     as?: string; // 'transaction': keep a slip here even when its rule says "transfer"
+    date?: string; // default date (the day picked on the monthly screen)
   }>();
   const editId = params.id ? Number(params.id) : undefined;
   const slipId = !editId && params.slipId ? Number(params.slipId) : undefined;
@@ -25,7 +26,7 @@ export default function TransactionScreen() {
   const [accountId, setAccountId] = useState<number | null>(null);
   const [slip, setSlip] = useState<Slip | null>(null);
   const [showOcr, setShowOcr] = useState(false);
-  const [date, setDate] = useState(() => defaultDate(params.month));
+  const [date, setDate] = useState(() => (params.date && isValidDate(params.date) ? params.date : defaultDate(params.month)));
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
   const [amountText, setAmountText] = useState('');

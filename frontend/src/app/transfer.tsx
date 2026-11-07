@@ -10,7 +10,7 @@ import { getLastAccountId, setPendingMonth } from '@/state';
 
 /** Add or edit a transfer between two of the user's own accounts (or confirm a slip as one). */
 export default function TransferScreen() {
-  const params = useLocalSearchParams<{ id?: string; month?: string; accountId?: string; slipId?: string }>();
+  const params = useLocalSearchParams<{ id?: string; month?: string; date?: string; accountId?: string; slipId?: string }>();
   const editId = params.id ? Number(params.id) : undefined;
   const slipId = !editId && params.slipId ? Number(params.slipId) : undefined;
 
@@ -21,7 +21,9 @@ export default function TransferScreen() {
   const [fromId, setFromId] = useState<number | null>(null);
   const [toId, setToId] = useState<number | null>(null);
   const [date, setDate] = useState(() =>
-    params.month && params.month !== currentMonth() ? `${params.month}-01` : toISODate(new Date()),
+    params.date && isValidDate(params.date)
+      ? params.date
+      : params.month && params.month !== currentMonth() ? `${params.month}-01` : toISODate(new Date()),
   );
   const [amountText, setAmountText] = useState('');
   const [note, setNote] = useState('');

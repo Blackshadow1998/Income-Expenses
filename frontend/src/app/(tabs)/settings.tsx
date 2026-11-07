@@ -24,6 +24,11 @@ export default function SettingsScreen() {
       </Card>
 
       <Card style={{ gap: 10 }}>
+        <Text style={styles.h2}>ข้อมูล</Text>
+        <Button title="📋 จัดการรายการ (หมวดย่อย)" variant="outline" onPress={() => router.push('/subcategories')} />
+      </Card>
+
+      <Card style={{ gap: 10 }}>
         <Text style={styles.h2}>ความปลอดภัย</Text>
         <Text style={{ color: COLORS.muted, fontSize: 13 }}>
           แอปจะล็อกและถาม PIN เมื่อเปิดใหม่ หรือไม่ได้ใช้งาน 5 นาที

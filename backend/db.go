@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -34,28 +35,7 @@ INSERT OR IGNORE INTO categories (code, name, direction, sort_order) VALUES
 	('lend',    'ให้ยืม', -1, 3),
 	('borrow',  'กู้',     1, 4);
 
--- Item list shown in the Add/Edit select box, per category.
-CREATE TABLE IF NOT EXISTS subcategories (
-	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	category_id INTEGER NOT NULL REFERENCES categories(id),
-	name        TEXT    NOT NULL,
-	sort_order  INTEGER NOT NULL DEFAULT 0,
-	UNIQUE (category_id, name)
-);
-
-INSERT OR IGNORE INTO subcategories (category_id, name, sort_order)
-SELECT c.id, s.name, s.sort_order
-FROM (
-	SELECT 'expense' AS code, 'ค่าอาหาร - น้ำ' AS name, 1 AS sort_order
-	UNION ALL SELECT 'expense', 'ค่าบัตรเครดิต', 2
-	UNION ALL SELECT 'expense', 'โอนให้ครอบครัว', 3
-	UNION ALL SELECT 'expense', 'โอนทำบุญ', 4
-	UNION ALL SELECT 'expense', 'เลี้ยงอาหารเพื่อน', 5
-	UNION ALL SELECT 'expense', 'ค่า Shopee', 6
-	UNION ALL SELECT 'income',  'เงินเดือน', 1
-	UNION ALL SELECT 'income',  'เพื่อนจ่ายเงิน (หารอาหาร, หาร App)', 2
-	UNION ALL SELECT 'income',  'เงินคืน', 3
-) s JOIN categories c ON c.code = s.code;
+` + subcategoriesTable + `
 
 -- Money accounts (bank accounts, credit cards, wallets, cash...).
 CREATE TABLE IF NOT EXISTS banks (
@@ -160,6 +140,34 @@ CREATE TABLE IF NOT EXISTS transfers (
 CREATE INDEX IF NOT EXISTS idx_transfers_user_date ON transfers(user_id, txn_date);
 `
 
+// Each user's item list ("รายการ") shown in the Add/Edit select box, per category.
+// user_id is NULL only for rows from before sign-in, until the first user takes them over.
+const subcategoriesTable = `
+CREATE TABLE IF NOT EXISTS subcategories (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id     INTEGER REFERENCES users(id),
+	category_id INTEGER NOT NULL REFERENCES categories(id),
+	name        TEXT    NOT NULL,
+	sort_order  INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (user_id, category_id, name)
+);
+`
+
+// starterSubcategories is the item list a new user starts with (except the first user, who
+// takes over the existing one).
+const starterSubcategories = `
+INSERT INTO subcategories (user_id, category_id, name, sort_order)
+SELECT ?, c.id, s.name, s.sort_order
+FROM (
+	SELECT 'expense' AS code, 'ค่าอาหาร - น้ำ' AS name, 1 AS sort_order
+	UNION ALL SELECT 'expense', 'ค่าเดินทาง', 2
+	UNION ALL SELECT 'expense', 'ค่าบัตรเครดิต', 3
+	UNION ALL SELECT 'expense', 'ค่าน้ำ ค่าไฟ ค่าเน็ต', 4
+	UNION ALL SELECT 'expense', 'ช้อปปิ้ง', 5
+	UNION ALL SELECT 'income',  'เงินเดือน', 1
+	UNION ALL SELECT 'income',  'เงินคืน', 2
+) s JOIN categories c ON c.code = s.code`
+
 // Uploaded bank slips. A slip stays "pending" (not counted in any balance) until the
 // user confirms it, which creates the transaction and links it here.
 const slipsTable = `
@@ -204,6 +212,9 @@ func migrate(db *sql.DB) error {
 	if err := upgradeSlips(db); err != nil {
 		return fmt.Errorf("upgrade slips: %w", err)
 	}
+	if err := upgradeSubcategories(db); err != nil {
+		return fmt.Errorf("upgrade subcategories: %w", err)
+	}
 	_, err := db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
 		CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, txn_date);
@@ -239,6 +250,48 @@ func upgradeSlips(db *sql.DB) error {
 		if _, err := tx.Exec(q); err != nil {
 			return err
 		}
+	}
+	return tx.Commit()
+}
+
+// upgradeSubcategories moves the shared item list from before per-user lists to the first user
+// (or leaves it unowned until someone signs up). The UNIQUE key changes, so the table is rebuilt;
+// transactions reference it, so foreign keys are off meanwhile and checked before committing.
+func upgradeSubcategories(db *sql.DB) error {
+	var has bool
+	if err := db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM pragma_table_info('subcategories') WHERE name = 'user_id')`,
+	).Scan(&has); err != nil || has {
+		return err
+	}
+	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return err
+	}
+	defer db.Exec(`PRAGMA foreign_keys = ON`)
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Build the new table under a temporary name and rename it last: renaming the old table instead
+	// would make SQLite repoint transactions' REFERENCES at the copy that gets dropped.
+	for _, q := range []string{
+		strings.Replace(subcategoriesTable, "subcategories (", "subcategories_new (", 1),
+		`INSERT INTO subcategories_new (id, user_id, category_id, name, sort_order)
+		 SELECT id, (SELECT MIN(id) FROM users), category_id, name, sort_order FROM subcategories`,
+		`DROP TABLE subcategories`,
+		`ALTER TABLE subcategories_new RENAME TO subcategories`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	var broken int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&broken); err != nil {
+		return err
+	}
+	if broken > 0 {
+		return fmt.Errorf("%d broken references after rebuild", broken)
 	}
 	return tx.Commit()
 }

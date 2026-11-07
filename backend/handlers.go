@@ -99,6 +99,9 @@ func (a *API) routes() http.Handler {
 	data("POST /api/slips", a.uploadSlips)
 	data("GET /api/slips/{id}", a.getSlip)
 	data("DELETE /api/slips/{id}", a.deleteSlip)
+	data("POST /api/subcategories", a.createSubcategory)
+	data("PUT /api/subcategories/{id}", a.renameSubcategory)
+	data("DELETE /api/subcategories/{id}", a.deleteSubcategory)
 	data("POST /api/transfers", a.createTransfer)
 	data("GET /api/transfers/{id}", a.getTransfer)
 	data("PUT /api/transfers/{id}", a.updateTransfer)
@@ -133,7 +136,7 @@ func (a *API) listCategories(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 
 	subs, err := a.db.QueryContext(r.Context(),
-		`SELECT id, category_id, name FROM subcategories ORDER BY sort_order, id`)
+		`SELECT id, category_id, name FROM subcategories WHERE user_id = ? ORDER BY sort_order, id`, userID(r))
 	if err != nil {
 		serverError(w, err)
 		return
@@ -613,8 +616,8 @@ func (a *API) decodeInput(w http.ResponseWriter, r *http.Request) (transactionIn
 	}
 	if in.SubcategoryID != nil {
 		if err := a.db.QueryRowContext(r.Context(),
-			`SELECT EXISTS(SELECT 1 FROM subcategories WHERE id = ? AND category_id = ?)`,
-			*in.SubcategoryID, in.CategoryID).Scan(&exists); err != nil {
+			`SELECT EXISTS(SELECT 1 FROM subcategories WHERE id = ? AND category_id = ? AND user_id = ?)`,
+			*in.SubcategoryID, in.CategoryID, userID(r)).Scan(&exists); err != nil {
 			serverError(w, err)
 			return in, false
 		}

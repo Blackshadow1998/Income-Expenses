@@ -259,6 +259,12 @@ export const api = {
   },
 
   categories: () => request<Category[]>('/categories'),
+  createSubcategory: (categoryId: number, name: string) =>
+    request<Subcategory>('/subcategories', post({ category_id: categoryId, name })),
+  renameSubcategory: (id: number, name: string) =>
+    request<Subcategory>(`/subcategories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  /** Transactions that used it keep their category; their item becomes "ไม่ระบุ". */
+  removeSubcategory: (id: number) => request<{ cleared_transactions: number }>(`/subcategories/${id}`, { method: 'DELETE' }),
   payees: () => request<string[]>('/payees'),
   months: () => request<string[]>('/months'),
   years: () => request<number[]>('/years'),

@@ -40,7 +40,10 @@ cd frontend && npx expo start --web --port 8081                                #
 - New/edited transactions **require** an account; payee ("ผู้รับ") and subcategory are optional.
 - Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`). Deleting that transaction deletes the slip + image.
 - Deleting an account with transactions is refused (409).
-- Multi-user: `accounts`, `transactions`, `slips` carry `user_id`; **every query must filter by `userID(r)`**. Categories, subcategories, banks and account types are shared.
+- Multi-user: `accounts`, `transactions`, `slips`, `transfers`, `subcategories` carry `user_id`; **every query must filter by `userID(r)`**.
+  Categories, banks and account types are shared. New users get `starterSubcategories`.
+- Table rebuilds: build `<table>_new`, copy, drop old, rename new (never rename the old table — SQLite repoints
+  other tables' REFERENCES at it). See `upgradeSubcategories`.
   Data routes go through `requireUnlocked` (session + PIN unlocked within 5 min). The first user to sign up takes over rows with `user_id NULL`.
 - Sign-in methods live in `identities` (`provider`, `subject`) so Google sign-in can be added later without touching `users`.
 - Slip images are served via signed short-lived links (`image_url`), not the session token.

@@ -223,11 +223,22 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if users == 1 {
-		for _, table := range []string{"accounts", "transactions", "slips"} {
+		for _, table := range []string{"accounts", "transactions", "slips", "subcategories"} {
 			if _, err := tx.ExecContext(r.Context(), `UPDATE `+table+` SET user_id = ? WHERE user_id IS NULL`, uid); err != nil {
 				serverError(w, err)
 				return
 			}
+		}
+	}
+	var items int
+	if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM subcategories WHERE user_id = ?`, uid).Scan(&items); err != nil {
+		serverError(w, err)
+		return
+	}
+	if items == 0 {
+		if _, err := tx.ExecContext(r.Context(), starterSubcategories, uid); err != nil {
+			serverError(w, err)
+			return
 		}
 	}
 	if err := tx.Commit(); err != nil {

@@ -12,9 +12,14 @@ import (
 
 // oldSchema is the shape of a database from before sign-in existed.
 const oldSchema = `
+CREATE TABLE subcategories (
+	id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER NOT NULL, name TEXT NOT NULL,
+	sort_order INTEGER NOT NULL DEFAULT 0, UNIQUE (category_id, name));
+INSERT INTO subcategories (category_id, name, sort_order) VALUES (2, 'ค่าอาหาร - น้ำ', 1);
 CREATE TABLE transactions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT, txn_date TEXT NOT NULL, category_id INTEGER NOT NULL,
 	amount_satang INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '',
+	subcategory_id INTEGER REFERENCES subcategories(id),
 	created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE TABLE accounts (
 	id INTEGER PRIMARY KEY AUTOINCREMENT, bank_id INTEGER NOT NULL, type_id INTEGER NOT NULL,
@@ -28,7 +33,7 @@ CREATE TABLE slips (
 	status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed')),
 	transaction_id INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 INSERT INTO accounts (bank_id, type_id, name, opening_satang) VALUES (2, 2, 'old', 100000);
-INSERT INTO transactions (txn_date, category_id, amount_satang, note) VALUES ('2026-11-01', 2, 5000, 'old expense');
+INSERT INTO transactions (txn_date, category_id, amount_satang, note, subcategory_id) VALUES ('2026-11-01', 2, 5000, 'old expense', 1);
 INSERT INTO slips (image_file, file_hash, slip_date) VALUES ('a.png', 'hash-a', '2026-11-02');
 `
 
@@ -38,6 +43,13 @@ type testClient struct {
 }
 
 func (c testClient) do(method, path, token string, body any) (int, map[string]any) {
+	out := map[string]any{}
+	status := c.doInto(method, path, token, body, &out)
+	return status, out
+}
+
+// doInto decodes the response body into out (e.g. a slice for list endpoints).
+func (c testClient) doInto(method, path, token string, body, out any) int {
 	c.t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -53,9 +65,8 @@ func (c testClient) do(method, path, token string, body any) (int, map[string]an
 		c.t.Fatalf("%s %s: %v", method, path, err)
 	}
 	defer res.Body.Close()
-	out := map[string]any{}
-	_ = json.NewDecoder(res.Body).Decode(&out)
-	return res.StatusCode, out
+	_ = json.NewDecoder(res.Body).Decode(out)
+	return res.StatusCode
 }
 
 // signedIn signs up a user, sets a PIN and returns the session token.

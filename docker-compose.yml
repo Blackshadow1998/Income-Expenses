@@ -5,7 +5,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: income-expenses-api
     ports:
-      - "8080:8080"
+      # Only this PC can reach port 8080; phones use HTTPS via `tailscale serve --bg 8080`.
+      - "127.0.0.1:8080:8080"
     environment:
       BACKUP_DIR: /app/backups # daily copy of the DB, newest 30 kept
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-} # set in .env (repo root) to turn on Google sign-in

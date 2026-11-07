@@ -15,7 +15,8 @@ See README.md for features, API table and run commands.
   - `src/api.ts` all API calls + types · `src/format.ts` money/date/Thai month helpers, colors · `src/state.ts` tiny cross-screen hand-off
   - `src/auth.tsx` AuthProvider (sign-in state, idle lock) · `components/AuthScreens.tsx` sign-in / PIN screens · `components/PinPad.tsx` · `src/tokenStore(.web).ts`
   - Follow `frontend/AGENTS.md` (Expo rules: `npx expo install`, versioned docs).
-- `docker-compose.yml` — API **and the built web app** on :8080 (build context = repo root; `backend/Dockerfile` runs
+- `docker-compose.yml` — API **and the built web app** on 127.0.0.1:8080 only; other devices use HTTPS via
+  `tailscale serve --bg 8080` → https://aekkaroek.tail1a3ff3.ts.net (tailnet only) (build context = repo root; `backend/Dockerfile` runs
   `expo export` in a node stage, Go serves it from `WEB_DIR` via `web.go`). Data in volume
   `income_expenses_income_expenses_data` (`/app/data`: DB + `slips/` images). Frontend changes reach the live site only after a rebuild.
 - The web build calls the API on its own origin; only the dev server (`__DEV__`, port 8081) calls `<host>:8080`.

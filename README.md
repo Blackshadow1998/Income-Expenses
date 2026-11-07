@@ -23,7 +23,8 @@ docker compose up -d --build
 image จะ build หน้าเว็บ (`expo export`) แล้ว Go เสิร์ฟทั้งหน้าเว็บและ API ที่พอร์ตเดียว — เปิดเครื่องแล้วใช้ได้เลย
 (`restart: unless-stopped`)
 
-- บนคอม: http://localhost:8080 · มือถือผ่าน Tailscale: http://<IP Tailscale ของคอม>:8080
+- บนคอม: http://localhost:8080 · มือถือ/เครื่องอื่น: **https://<เครื่อง>.<tailnet>.ts.net** ผ่าน `tailscale serve --bg 8080`
+  (พอร์ต 8080 เปิดเฉพาะ 127.0.0.1 — เข้าผ่าน IP ตรง ๆ จากเครื่องอื่นไม่ได้)
 - API: http://localhost:8080/api/health
 - มือถือ: เมนูเบราว์เซอร์ → "เพิ่มลงหน้าจอหลัก" (มี manifest + ไอคอน; แบบเต็มจอต้องเปิดผ่าน HTTPS
   เช่น `tailscale serve` หลังเปิด HTTPS Certificates ใน Tailscale admin)

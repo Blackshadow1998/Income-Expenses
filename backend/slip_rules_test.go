@@ -46,7 +46,8 @@ XXX-X-x5678-x ๑แผน4
 ค่าธรรมเนียม:
 0.00 บาท`
 	p := parseSlip(text)
-	if p.Date != "2026-11-07" || p.ToBank != "ทหารไทยธนชาต (ttb)" || p.Amount != 1234.50 {
+	if p.Date != "2026-11-07" || p.ToBank != "ทหารไทยธนชาต (ttb)" || p.Amount != 1234.50 ||
+		p.FromName != "นาย ทดสอบ ก" || p.ToName != "บริษัท ทดลองพาเลซ จำกัด" {
 		t.Fatalf("parsed %+v", p)
 	}
 	ttb := int64(7)
@@ -64,6 +65,19 @@ XXX-X-x5678-x ๑แผน4
 		if got := c.rule.matches(sl); got != c.want {
 			t.Errorf("%s %q matches = %v, want %v (to_name %q)", c.rule.MatchKind, c.rule.MatchText, got, c.want, p.ToName)
 		}
+	}
+}
+
+// The enlarged image's reading fills what the original missed and gives fuller names.
+func TestParseSlipTextMergesEnlargedReading(t *testing.T) {
+	orig := "โอนเงินสำเร็จ\n6 พ.ุย. 69 12:42 น.\nนาย ทดสอบ ก\nธ.กสิกรไทย\nXXX-X-X1234-x\n๐ นาย ทดสอบ กจธมน 9\n. ธธกรุงไทย เข\nจำนวน:\n4,500.00 บาท"
+	big := "โอนเงินสำเร็จ\n6 N.&8l. 69 12:42 4.\nนาย ทดสอบ ก\nธ.กสิกรไทย\nXXX-X-X1234-x\n๐ นาย ทดสอบ กิจธิมน 2 ชู\nธ.กรุงไทย\nจำนวน:\n4,500.00 บาท"
+	d := parseSlipText(orig + "\n" + upscaledMark + "\n" + big)
+	if d.Date != "2026-11-06" || d.ToName != "นาย ทดสอบ กิจธิมน" || d.ToBank != "กรุงไทย (KTB)" || d.Amount != 4500 {
+		t.Fatalf("merged %+v", d)
+	}
+	if got := parseSlipText(orig); got.ToName != "นาย ทดสอบ กจธมน" {
+		t.Fatalf("original only: %+v", got)
 	}
 }
 

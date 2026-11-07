@@ -18,8 +18,9 @@ COPY backend/*.go ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/api .
 
 FROM alpine:3.20
-# tesseract + Thai/English language data reads bank slips locally (no external service).
-RUN apk add --no-cache tzdata tesseract-ocr tesseract-ocr-data-tha tesseract-ocr-data-eng
+# tesseract + Thai/English language data reads bank slips locally (no external service);
+# imagemagick enlarges a slip for a second, sharper reading.
+RUN apk add --no-cache tzdata tesseract-ocr tesseract-ocr-data-tha tesseract-ocr-data-eng imagemagick
 ENV TZ=Asia/Bangkok OMP_THREAD_LIMIT=1
 WORKDIR /app
 COPY --from=build /out/api /app/api

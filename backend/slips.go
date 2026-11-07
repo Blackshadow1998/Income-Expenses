@@ -185,7 +185,7 @@ func (a *API) saveSlip(ctx context.Context, uid int64, name string, data []byte)
 		logger.Printf("ocr %s: %v", name, err)
 		// Keep the slip anyway: the user can still confirm it and type the details.
 	}
-	parsed := parseSlip(text)
+	parsed := parseSlipText(text)
 
 	// A slip with the same reference number is the same transfer (e.g. a re-saved screenshot).
 	if parsed.Ref != "" {
@@ -342,7 +342,7 @@ func reparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
 
 	updated := 0
 	for _, s := range list {
-		p := parseSlip(s.text)
+		p := parseSlipText(s.text)
 		changed := false
 		if !s.dateFound && p.Date != "" {
 			s.date, s.dateFound, changed = p.Date, true, true
@@ -357,6 +357,10 @@ func reparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
 			if *f.cur == "" && f.found != "" {
 				*f.cur, changed = f.found, true
 			}
+		}
+		// A name of one or two letters was OCR noise picked by an older parser ("อ้า").
+		if p.ToName != "" && p.ToName != s.to && letterCount(s.to) < 3 {
+			s.to, changed = p.ToName, true
 		}
 		if s.toBankID == nil && p.ToBank != "" {
 			var id int64

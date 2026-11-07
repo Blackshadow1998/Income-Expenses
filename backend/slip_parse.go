@@ -23,8 +23,95 @@ type SlipData struct {
 	ToBank   string  // receiver bank, matching banks.name
 }
 
-// runOCR reads text from an image with tesseract (Thai + English).
+// upscaledMark separates the reading of the original image from the reading of the enlarged copy in
+// the stored OCR text (see runOCR, parseSlipText).
+const upscaledMark = "===== 2x ====="
+
+// runOCR reads the slip twice: as is, and enlarged 2x. Small screenshot text keeps its Thai vowel
+// marks and account digits better enlarged, while dates often read better at the original size, so
+// both readings are kept and merged field by field. Enlarging is best effort.
 func runOCR(ctx context.Context, imagePath string) (string, error) {
+	orig, err := tesseract(ctx, imagePath)
+	if err != nil {
+		return "", err
+	}
+	big, err := enlarge(ctx, imagePath)
+	if err != nil {
+		return orig, nil
+	}
+	defer os.Remove(big)
+	up, err := tesseract(ctx, big)
+	if err != nil || strings.TrimSpace(up) == "" {
+		return orig, nil
+	}
+	return orig + "\n" + upscaledMark + "\n" + up, nil
+}
+
+// enlarge writes a 2x copy of the image as a temporary PNG with ImageMagick (its resize filter gave
+// clearly better OCR than Go's image scalers), capped at 4000 px a side; the caller removes it.
+func enlarge(ctx context.Context, path string) (string, error) {
+	out, err := os.CreateTemp("", "slip-2x-*.png")
+	if err != nil {
+		return "", err
+	}
+	out.Close()
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "magick", path+"[0]", "-resize", "200%", "-resize", "4000x4000>", out.Name())
+	if msg, err := cmd.CombinedOutput(); err != nil {
+		os.Remove(out.Name())
+		return "", fmt.Errorf("magick: %v: %s", err, strings.TrimSpace(string(msg)))
+	}
+	return out.Name(), nil
+}
+
+// parseSlipText parses stored OCR text: the original reading, optionally followed by the reading of
+// the enlarged image. Fields come from the original; the enlarged one fills gaps and fuller names.
+func parseSlipText(text string) SlipData {
+	orig, big, ok := strings.Cut(text, "\n"+upscaledMark+"\n")
+	d := parseSlip(orig)
+	if !ok {
+		return d
+	}
+	o := parseSlip(big)
+	if d.Date == "" {
+		d.Date = o.Date
+	}
+	if d.Amount == 0 {
+		d.Amount = o.Amount
+	}
+	if d.Ref == "" {
+		d.Ref = o.Ref
+	}
+	if d.Bank == "" {
+		d.Bank = o.Bank
+	}
+	if d.ToBank == "" {
+		d.ToBank = o.ToBank
+	}
+	d.FromName = betterName(d.FromName, o.FromName)
+	d.ToName = betterName(d.ToName, o.ToName)
+	return d
+}
+
+// betterName keeps reading a unless it is missing or noise, or b is the same name with more of its
+// vowel marks (or more of it): "นาย เอกฤกษ กจธมน" -> "นาย เอกฤกษ์ กิจธิมน".
+func betterName(a, b string) string {
+	switch {
+	case b == "":
+		return a
+	case a == "" || letterCount(a) < 3:
+		return b
+	}
+	ka, kb := matchKey(a), matchKey(b)
+	if (strings.Contains(kb, ka) || strings.Contains(ka, kb)) && len([]rune(b)) > len([]rune(a)) {
+		return b
+	}
+	return a
+}
+
+// tesseract reads text from an image (Thai + English).
+func tesseract(ctx context.Context, imagePath string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "tesseract", imagePath, "stdout",
@@ -134,7 +221,7 @@ func parseSlip(text string) SlipData {
 // amount / fee part. OCR noise lines (account numbers, a garbled company name) may sit in between.
 func findToBank(lines, keys []string, fromName, toName string) string {
 	start, end := receiverBlock(lines, keys, fromName, toName)
-	if start < 0 || toName == "" || !strings.Contains(lines[start], toName) {
+	if start < 0 || toName == "" || !lineHasName(lines[start], toName) {
 		return "" // below the sender's name is the sender's own bank
 	}
 	for j := start + 1; j < end; j++ {
@@ -145,6 +232,11 @@ func findToBank(lines, keys []string, fromName, toName string) string {
 	return ""
 }
 
+// lineHasName: the OCR line holds the name as parsed (which may have had OCR words fixed, see fixOCRWords).
+func lineHasName(line, name string) bool {
+	return strings.Contains(line, name) || strings.Contains(fixOCRWords(line), name)
+}
+
 // receiverBlock is the line range [start, end) holding the receiver: from the line with the receiver's
 // name (looked for below the sender's, which may contain it on a transfer to oneself), or the line after
 // the sender's name when the receiver wasn't read, up to the amount / fee lines. start is -1 when
@@ -152,7 +244,7 @@ func findToBank(lines, keys []string, fromName, toName string) string {
 func receiverBlock(lines, keys []string, fromName, toName string) (start, end int) {
 	from := -1
 	for i, l := range lines {
-		if fromName != "" && strings.Contains(l, fromName) {
+		if fromName != "" && lineHasName(l, fromName) {
 			from = i
 			break
 		}
@@ -161,7 +253,7 @@ func receiverBlock(lines, keys []string, fromName, toName string) (start, end in
 	if toName != "" {
 		for _, first := range []int{from + 1, 0} {
 			for i := first; i < len(lines) && start < 0; i++ {
-				if strings.Contains(lines[i], toName) {
+				if lineHasName(lines[i], toName) {
 					start = i
 				}
 			}
@@ -318,7 +410,7 @@ func stripLabel(line, label string) string {
 }
 
 var namePrefixes = []string{"นาย", "นางสาว", "นาง", "นส", "ดช", "ดญ", "คุณ", "mr", "mrs", "ms", "miss",
-	"บจก", "บริษัท", "หจก", "ร้าน", "บมจ", "co", "company"}
+	"บจก", "บริษัท", "บรษท", "บริษท", "หจก", "ร้าน", "บมจ", "co", "company"}
 
 var (
 	leadingJunkRe = regexp.MustCompile(`^[^\p{L}]+`)              // OCR noise before a name, e.g. ") นาย" or "๓@ ร้าน"
@@ -335,15 +427,7 @@ func (d SlipData) withNameFallback(lines, keys []string) SlipData {
 	}
 	fromAt := -1
 	for i := range lines {
-		name := cleanName(leadingJunkRe.ReplaceAllString(lines[i], ""))
-		k := compact(name)
-		titled := false
-		for _, p := range namePrefixes {
-			if strings.HasPrefix(k, p) && digitRatio(k) < 0.3 {
-				titled = true
-				break
-			}
-		}
+		name, titled := titledName(lines[i])
 		switch {
 		case !titled:
 		case d.FromName == "" && name != d.ToName:
@@ -373,10 +457,80 @@ func (d SlipData) withNameFallback(lines, keys []string) SlipData {
 	return d
 }
 
+// titledName returns the line as a name when it starts with a personal/company title, after dropping
+// OCR junk around it (see junkFreeName).
+func titledName(line string) (string, bool) {
+	name := junkFreeName(line)
+	k := compact(name)
+	for _, p := range namePrefixes {
+		if strings.HasPrefix(k, p) && digitRatio(k) < 0.3 {
+			return fixOCRWords(name), true
+		}
+	}
+	return "", false
+}
+
+// junkFreeName is the line without the OCR junk around a name: symbols and junk words in front, and
+// everything from the first junk word after that ("ย๒» บรษท ...", "นาย สมชาย ใจดี 2 ชู", "G0 ไลน์แมน ว%").
+func junkFreeName(line string) string {
+	words := strings.Fields(leadingJunkRe.ReplaceAllString(line, ""))
+	for len(words) > 0 && junkWord(words[0]) {
+		words = words[1:]
+	}
+	for i := 1; i < len(words); i++ {
+		if junkWord(words[i]) {
+			words = words[:i]
+			break
+		}
+	}
+	return cleanName(strings.Join(words, " "))
+}
+
+func letterCount(s string) int {
+	n := 0
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			n++
+		}
+	}
+	return n
+}
+
+// junkWord is an OCR artifact: it has digits or symbols, or is a lone Latin letter ("O", "x").
+func junkWord(w string) bool {
+	if r := []rune(w); len(r) == 1 && r[0] < 0x80 {
+		return true
+	}
+	for _, r := range w {
+		if !unicode.IsLetter(r) && !unicode.Is(unicode.Mn, r) && r != '.' {
+			return true
+		}
+	}
+	return false
+}
+
+// ocrWordFixes restores words Tesseract reads without their vowel marks.
+var ocrWordFixes = map[string]string{"บรษท": "บริษัท", "บรษัท": "บริษัท", "บริษท": "บริษัท", "จากด": "จำกัด", "จำกด": "จำกัด", "จากัด": "จำกัด", "น่าย": "นาย"}
+
+func fixOCRWords(name string) string {
+	words := strings.Fields(name)
+	for i, w := range words {
+		if f, ok := ocrWordFixes[w]; ok {
+			words[i] = f
+		}
+	}
+	return strings.Join(words, " ")
+}
+
 // nameLike returns the line as a name when, after dropping OCR junk in front, it is mostly letters
 // and not a bank name or one of the slip's own labels.
 func nameLike(line, key string) (string, bool) {
-	name := cleanName(leadingJunkRe.ReplaceAllString(line, ""))
+	name := fixOCRWords(junkFreeName(line))
+	// Untitled names are shops/billers: a lone letter at the end is noise ("ไลน์แมน ว"), unlike the
+	// shortened surname after a personal title.
+	if words := strings.Fields(name); len(words) > 1 && letterCount(words[len(words)-1]) == 1 {
+		name = strings.Join(words[:len(words)-1], " ")
+	}
 	letters := 0
 	for _, r := range name {
 		if unicode.IsLetter(r) {

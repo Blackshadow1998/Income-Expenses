@@ -158,6 +158,10 @@ func (a *API) suggest(ctx context.Context, rules []SlipRule, sl Slip) (*SlipSugg
 		}
 		if s.Payee == "" && s.Action == "transaction" {
 			s.Payee = sl.ToName
+			// The rule's own text is the cleaner spelling when OCR mangled the receiver's name.
+			if r.MatchKind == "to" && !strings.Contains(sl.ToName, r.MatchText) && len([]rune(r.MatchText)) >= 4 {
+				s.Payee = r.MatchText
+			}
 		}
 		return s, nil
 	}

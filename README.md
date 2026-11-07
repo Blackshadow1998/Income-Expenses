@@ -138,6 +138,10 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | GET | `/api/accounts/options` | รายชื่อธนาคาร และประเภทบัญชี |
 | GET/PUT/DELETE | `/api/accounts/{id}` | ดู / แก้ไข / ลบ บัญชี |
 | POST | `/api/accounts` | เพิ่มบัญชี `{bank_id, type_id, name, opening_balance}` |
+| GET | `/api/budgets?month=YYYY-MM` | งบประมาณรายเดือน + ยอดที่ใช้ไปในเดือนนั้น |
+| POST | `/api/budgets` | ตั้ง/แก้งบ `{category_id, subcategory_id?, amount}` (หมวด/รายการเดิม = แทนที่) |
+| DELETE | `/api/budgets/{id}` | ลบงบ |
+| POST/PUT/DELETE | `/api/subcategories[/{id}]` | เพิ่ม/แก้ชื่อ/ลบ รายการ (หมวดย่อย) ของตัวเอง |
 | POST | `/api/transfers` | โอนระหว่างบัญชีตัวเอง `{date, from_account_id, to_account_id, amount, note}` (ไม่นับเป็นรับ/จ่าย) |
 | GET/PUT/DELETE | `/api/transfers/{id}` | ดู / แก้ไข / ลบ รายการโอน |
 | POST | `/api/slips` | อัปโหลดสลิป (multipart field `files`, หลายไฟล์ได้) → อ่านแล้วบันทึกเป็นรอคอนเฟิร์ม |

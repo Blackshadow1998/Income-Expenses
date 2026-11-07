@@ -26,6 +26,7 @@ export default function SettingsScreen() {
       <Card style={{ gap: 10 }}>
         <Text style={styles.h2}>ข้อมูล</Text>
         <Button title="📋 จัดการรายการ (หมวดย่อย)" variant="outline" onPress={() => router.push('/subcategories')} />
+        <Button title="🎯 งบประมาณรายเดือน" variant="outline" onPress={() => router.push('/budgets')} />
       </Card>
 
       <Card style={{ gap: 10 }}>

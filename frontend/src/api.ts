@@ -149,6 +149,17 @@ export interface TransferInput {
   note: string;
 }
 
+export interface Budget {
+  id: number;
+  category_id: number;
+  category_code: CategoryCode;
+  category_name: string;
+  subcategory_id: number | null; // null = whole category
+  subcategory_name: string;
+  amount: number; // monthly limit
+  spent: number; // in the requested month
+}
+
 export interface MonthData {
   month: string;
   items: Transaction[];
@@ -278,6 +289,12 @@ export const api = {
   remove: (id: number) => request<void>(`/transactions/${id}`, { method: 'DELETE' }),
   yearly: (year: number, accountId?: number | null) =>
     request<YearData>(`/summary/yearly?year=${year}${accountId ? `&account_id=${accountId}` : ''}`),
+
+  budgets: (month: string) => request<Budget[]>(`/budgets?month=${month}`),
+  /** Creates or replaces the budget of a category (or of one item of it). */
+  saveBudget: (categoryId: number, subcategoryId: number | null, amount: number) =>
+    request<{ id: number }>('/budgets', post({ category_id: categoryId, subcategory_id: subcategoryId, amount })),
+  removeBudget: (id: number) => request<void>(`/budgets/${id}`, { method: 'DELETE' }),
 
   getTransfer: (id: number) => request<Transfer>(`/transfers/${id}`),
   createTransfer: (body: TransferInput) => request<Transfer>('/transfers', post(body)),

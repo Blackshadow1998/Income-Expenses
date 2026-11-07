@@ -138,6 +138,16 @@ CREATE TABLE IF NOT EXISTS transfers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_transfers_user_date ON transfers(user_id, txn_date);
+
+-- Monthly spending limit for a category, or for one item of it (subcategory_id set). Same every month.
+CREATE TABLE IF NOT EXISTS budgets (
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id        INTEGER NOT NULL REFERENCES users(id),
+	category_id    INTEGER NOT NULL REFERENCES categories(id),
+	subcategory_id INTEGER REFERENCES subcategories(id) ON DELETE CASCADE,
+	amount_satang  INTEGER NOT NULL CHECK (amount_satang > 0),
+	created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
 `
 
 // Each user's item list ("รายการ") shown in the Add/Edit select box, per category.

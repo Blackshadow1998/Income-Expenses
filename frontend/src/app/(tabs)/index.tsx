@@ -3,8 +3,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Account, api, Category, MonthData, Slip, Transaction, Transfer } from '@/api';
+import { Account, api, Budget, Category, MonthData, Slip, Transaction, Transfer } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
+import { BudgetCard } from '@/components/BudgetCard';
 import { AnimatedNumber, FadeIn, GrowBar, PressScale, Skeleton } from '@/components/motion';
 import { PendingSlipCard } from '@/components/PendingSlipCard';
 import { Button, Card, ErrorBox, IconBubble, Stepper } from '@/components/ui';
@@ -22,6 +23,7 @@ export default function MonthScreen() {
   const accountRef = useRef<number | null>(null);
   const [month, setMonth] = useState<string | null>(null);
   const [data, setData] = useState<MonthData | null>(null);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,11 @@ export default function MonthScreen() {
     setLoading(true);
     setError(null);
     try {
-      const d = await api.month(m, accountRef.current);
-      if (id === reqId.current) setData(d);
+      const [d, b] = await Promise.all([api.month(m, accountRef.current), api.budgets(m)]);
+      if (id === reqId.current) {
+        setData(d);
+        setBudgets(b);
+      }
     } catch (e) {
       if (id === reqId.current) setError((e as Error).message);
     } finally {
@@ -213,6 +218,10 @@ export default function MonthScreen() {
         <>
           <FadeIn delay={140}>
             <CategoryBreakdown key={`${month}-${accountId}`} categories={categories} totals={data.totals.by_category} />
+          </FadeIn>
+
+          <FadeIn delay={170}>
+            <BudgetCard key={month} budgets={budgets} />
           </FadeIn>
 
           <FadeIn delay={200} style={styles.actions}>

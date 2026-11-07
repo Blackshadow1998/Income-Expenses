@@ -22,8 +22,8 @@ const TICKS = 12;
 /** Dial geometry: centre, outer ring radius (room left for ticks and pointer), core radius, ring width. */
 function geometry(size: number, length: number) {
   const c = size / 2;
-  const outer = c - 20;
-  const core = size * 0.14;
+  const outer = c - 18;
+  const core = size * 0.11; // just room for the PIN dots, leaving the rings wide enough for readable digits
   return { c, outer, core, t: (outer - core) / length };
 }
 
@@ -152,9 +152,9 @@ export function VaultDial({ digits, length, mode, size }: { digits: string; leng
                         styles.abs,
                         styles.digit,
                         {
-                          fontSize: Math.min(13, t * 0.68),
-                          left: c + rm * Math.sin((a * Math.PI) / 180) - 8,
-                          top: c - rm * Math.cos((a * Math.PI) / 180) - 8,
+                          fontSize: Math.min(16, t * 0.82),
+                          left: c + rm * Math.sin((a * Math.PI) / 180) - 10,
+                          top: c - rm * Math.cos((a * Math.PI) / 180) - 10,
                           transform: [{ rotate: `${a}deg` }],
                           color: top && !masked ? color : VAULT.muted,
                           opacity: masked ? 0.12 : top ? 1 : 0.55,
@@ -212,7 +212,7 @@ export function VaultDial({ digits, length, mode, size }: { digits: string; leng
 const styles = StyleSheet.create({
   abs: { position: 'absolute' },
   tick: { width: 6, height: 16, borderRadius: 3 },
-  digit: { width: 16, height: 16, lineHeight: 16, textAlign: 'center', fontWeight: '700', fontVariant: ['tabular-nums'] },
+  digit: { width: 20, height: 20, lineHeight: 20, textAlign: 'center', fontWeight: '800', fontVariant: ['tabular-nums'] },
   pointer: {
     width: 0,
     height: 0,

@@ -1,10 +1,10 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ReactNode, useState } from 'react';
+import { Animated, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, downloadCsv } from '@/api';
 import { useAuth } from '@/auth';
 import { GoogleButton } from '@/components/GoogleButton';
-import { PressScale } from '@/components/motion';
+import { FadeIn, PressScale } from '@/components/motion';
 import { Button, Card } from '@/components/ui';
 import { COLORS, confirmAsync, currentMonth, setThemePref, showError, showInfo, THEME_PREF, ThemePref } from '@/format';
 
@@ -86,6 +86,34 @@ function RecoveryEmail() {
   );
 }
 
+/** Card that shows only its header until tapped; the content pops out below it. */
+function Collapsible({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const turn = useState(() => new Animated.Value(0))[0];
+  const toggle = () => {
+    Animated.spring(turn, { toValue: open ? 0 : 1, speed: 20, bounciness: 8, useNativeDriver: Platform.OS !== 'web' }).start();
+    setOpen(!open);
+  };
+  return (
+    <Card style={{ gap: 10 }}>
+      <PressScale onPress={toggle} scaleTo={0.98} style={styles.sectionHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.h2}>{title}</Text>
+          {!open && <Text style={styles.sectionHint} numberOfLines={1}>{hint}</Text>}
+        </View>
+        <Animated.Text style={[styles.chevron, { transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] }]}>
+          ⌄
+        </Animated.Text>
+      </PressScale>
+      {open && (
+        <FadeIn from={-10} style={{ gap: 10 }}>
+          {children}
+        </FadeIn>
+      )}
+    </Card>
+  );
+}
+
 const THEMES: { key: ThemePref; label: string }[] = [
   { key: 'system', label: '📱 ตามเครื่อง' },
   { key: 'light', label: '☀️ สว่าง' },
@@ -111,14 +139,13 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
-      <Card style={{ gap: 10 }}>
-        <Text style={styles.h2}>ข้อมูล</Text>
+      <Collapsible title="📂 ข้อมูล" hint="รายการ · งบประมาณ · รายการประจำ · เงื่อนไขสลิป · หนี้">
         <Button title="📋 จัดการรายการ (หมวดย่อย)" variant="outline" onPress={() => router.push('/subcategories')} />
         <Button title="🎯 งบประมาณรายเดือน" variant="outline" onPress={() => router.push('/budgets')} />
         <Button title="🔁 รายการประจำ" variant="outline" onPress={() => router.push('/recurring')} />
         <Button title="🧠 เงื่อนไขสลิป (ค่าหอ, โอนให้ตัวเอง...)" variant="outline" onPress={() => router.push('/slip-rules')} />
         <Button title="🤝 หนี้ ให้ยืม / กู้" variant="outline" onPress={() => router.push('/debts')} />
-      </Card>
+      </Collapsible>
 
       <Card style={{ gap: 10 }}>
         <Text style={styles.h2}>📤 ส่งออก Excel / CSV</Text>
@@ -151,8 +178,7 @@ export default function SettingsScreen() {
 
       <RecoveryEmail />
 
-      <Card style={{ gap: 10 }}>
-        <Text style={styles.h2}>ความปลอดภัย</Text>
+      <Collapsible title="🛡️ ความปลอดภัย" hint="ล็อก · เปลี่ยน PIN · เปลี่ยนรหัสผ่าน · Google">
         <Text style={{ color: COLORS.muted, fontSize: 13 }}>
           แอปจะล็อกและถาม PIN เมื่อเปิดใหม่ หรือไม่ได้ใช้งาน 5 นาที
         </Text>
@@ -170,7 +196,7 @@ export default function SettingsScreen() {
             }
           }}
         />
-      </Card>
+      </Collapsible>
 
       <Button title="ออกจากระบบ" variant="danger" onPress={onSignOut} />
     </ScrollView>
@@ -191,9 +217,12 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   name: { fontSize: 17, fontWeight: '700', color: COLORS.text },
   h2: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sectionHint: { color: COLORS.muted, fontSize: 12, marginTop: 2 },
+  chevron: { fontSize: 22, color: COLORS.primary, fontWeight: '800', lineHeight: 24 },
   segment: { flexDirection: 'row', backgroundColor: COLORS.track, borderRadius: 12, padding: 3 },
   segBtn: { paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  segBtnActive: { backgroundColor: COLORS.card, boxShadow: '0px 2px 6px rgba(30, 27, 75, 0.15)' },
+  segBtnActive: { backgroundColor: COLORS.card, boxShadow: '0px 2px 6px rgba(59, 47, 42, 0.15)' },
   segText: { fontWeight: '700', color: COLORS.muted, fontSize: 13 },
   input: {
     borderWidth: 1,

@@ -40,7 +40,7 @@ export function PinPad({
 }) {
   const [digits, setDigits] = useState('');
   const { width } = useWindowDimensions();
-  const dialSize = Math.min(320, width - 48);
+  const dialSize = Math.min(340, width - 40);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;

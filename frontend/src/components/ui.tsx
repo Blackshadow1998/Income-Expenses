@@ -42,8 +42,8 @@ export function Button({
 
 const VARIANTS: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
   primary: { bg: COLORS.primary, fg: '#fff', border: COLORS.primary },
-  outline: { bg: COLORS.card, fg: COLORS.primary, border: '#c7cbf7' },
-  danger: { bg: COLORS.card, fg: COLORS.out, border: '#fecaca' },
+  outline: { bg: COLORS.card, fg: COLORS.primary, border: COLORS.primaryBorder },
+  danger: { bg: COLORS.card, fg: COLORS.out, border: COLORS.dangerBorder },
   ghost: { bg: 'transparent', fg: COLORS.text, border: 'transparent' },
   soft: { bg: COLORS.primarySoft, fg: COLORS.primary, border: COLORS.primarySoft },
 };

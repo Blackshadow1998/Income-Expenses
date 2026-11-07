@@ -63,6 +63,8 @@ const LIGHT = {
   border: '#efe5d9',
   primary: '#8b5e3c',
   primarySoft: '#f4e9dd',
+  primaryBorder: '#e6d3bf', // outline buttons
+  dangerBorder: '#f1c8c0',
   in: '#4d7c4a',
   out: '#b4483b',
   pending: '#a16207', // slips waiting for confirmation
@@ -84,6 +86,8 @@ const DARK: typeof LIGHT = {
   border: '#33291f',
   primary: '#b07a4a', // dark enough for white text on buttons, light enough for links on the cards
   primarySoft: '#3a2b1f',
+  primaryBorder: '#4a3a2c',
+  dangerBorder: '#5a2e27',
   in: '#8fbf7f',
   out: '#e58a7c',
   pending: '#e9b562',

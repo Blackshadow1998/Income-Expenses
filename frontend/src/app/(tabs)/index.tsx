@@ -332,7 +332,7 @@ function HeroStat({ icon, label, value, dot }: { icon: string; label: string; va
   return (
     <View style={styles.heroStat}>
       <View style={[styles.heroIcon, { backgroundColor: dot }]}>
-        <Text style={{ color: '#1e1b4b', fontWeight: '900' }}>{icon}</Text>
+        <Text style={{ color: '#5c3d2e', fontWeight: '900' }}>{icon}</Text>
       </View>
       <View style={{ flexShrink: 1 }}>
         <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{label}</Text>
@@ -495,7 +495,7 @@ function groupByDay(items: Transaction[], transfers: Transfer[]) {
 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 14, maxWidth: 820, width: '100%', alignSelf: 'center', paddingBottom: 32 },
-  hero: { borderRadius: 24, padding: 18, gap: 12, overflow: 'hidden', boxShadow: '0px 12px 28px rgba(79, 70, 229, 0.35)' },
+  hero: { borderRadius: 24, padding: 18, gap: 12, overflow: 'hidden', boxShadow: '0px 12px 28px rgba(139, 94, 60, 0.35)' },
   blob: { position: 'absolute', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.09)' },
   heroLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13 },
   heroValue: { color: '#fff', fontSize: 38, fontWeight: '800', letterSpacing: 0.5 },

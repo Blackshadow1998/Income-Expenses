@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
-    boxShadow: '0px 10px 24px rgba(79, 70, 229, 0.35)',
+    boxShadow: '0px 10px 24px rgba(139, 94, 60, 0.35)',
   },
   title: { fontSize: 20, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
   subtitle: { color: COLORS.muted, textAlign: 'center' },

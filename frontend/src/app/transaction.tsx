@@ -219,7 +219,7 @@ export default function TransactionScreen() {
             <Pressable onPress={() => setShowOcr((v) => !v)}>
               <Text style={{ color: COLORS.primary, fontSize: 12 }}>{showOcr ? '▲ ซ่อนข้อความที่อ่านได้' : '▼ ดูข้อความที่อ่านได้ทั้งหมด'}</Text>
             </Pressable>
-            {showOcr && <Text style={styles.ocrText} selectable>{slip.ocr_text || '(ไม่มีข้อความ)'}</Text>}
+            {showOcr && <Text style={styles.ocrText} selectable>{slip.ocr_text.split('\n===== 2x =====\n')[0] || '(ไม่มีข้อความ)'}</Text>}
           </View>
         </View>
       )}
@@ -412,9 +412,9 @@ function defaultDate(month?: string): string {
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 12, maxWidth: 640, width: '100%', alignSelf: 'center' },
   balanceCard: { backgroundColor: COLORS.primary, borderColor: COLORS.primary, gap: 4 },
-  balanceLabel: { color: '#e0e7ff', fontSize: 14 },
+  balanceLabel: { color: '#f5e9dc', fontSize: 14 },
   balanceValue: { color: '#fff', fontSize: 26, fontWeight: '800' },
-  balanceSub: { color: '#c7d2fe', fontSize: 12 },
+  balanceSub: { color: '#e8d5c0', fontSize: 12 },
   slipCard: {
     flexDirection: 'row',
     gap: 12,

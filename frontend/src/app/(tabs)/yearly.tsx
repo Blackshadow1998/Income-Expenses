@@ -182,7 +182,7 @@ function Stat({ label, value }: { label: string; value?: number }) {
 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 12, maxWidth: 820, width: '100%', alignSelf: 'center', paddingBottom: 32 },
-  hero: { borderRadius: 24, padding: 18, gap: 14, overflow: 'hidden', boxShadow: '0px 12px 28px rgba(79, 70, 229, 0.35)' },
+  hero: { borderRadius: 24, padding: 18, gap: 14, overflow: 'hidden', boxShadow: '0px 12px 28px rgba(139, 94, 60, 0.35)' },
   blob: { position: 'absolute', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.09)' },
   statsRow: { flexDirection: 'row', gap: 8 },
   stat: { flex: 1, gap: 2, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.14)' },

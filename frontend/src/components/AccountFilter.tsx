@@ -41,6 +41,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.card,
   },
-  chipActive: { backgroundColor: '#1e1b4b', borderColor: '#1e1b4b' },
+  chipActive: { backgroundColor: '#5c3d2e', borderColor: '#5c3d2e' },
   text: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
 });

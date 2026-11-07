@@ -11,15 +11,6 @@ export const MONTHS_SHORT = [
   'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
 ];
 
-export const CATEGORY_COLORS: Record<CategoryCode, string> = {
-  income: '#16a34a',
-  expense: '#dc2626',
-  lend: '#ea580c',
-  borrow: '#2563eb',
-  lend_return: '#0d9488',
-  borrow_repay: '#7c3aed',
-};
-
 export const CATEGORY_ICONS: Record<CategoryCode, string> = {
   income: '💰',
   expense: '💸',
@@ -36,58 +27,68 @@ export const THEME_PREF: ThemePref = stored === 'light' || stored === 'dark' ? s
 export const IS_DARK = THEME_PREF === 'dark' || (THEME_PREF === 'system' && Appearance.getColorScheme() === 'dark');
 export const setThemePref = (pref: ThemePref) => saveThemePref(pref);
 
+/**
+ * Earthy colours, one family per category pair: in sage / out brick, lend ochre + its return teal,
+ * borrow plum + its repayment dusty rose. Dark mode uses lighter shades so they read on espresso.
+ */
+export const CATEGORY_COLORS: Record<CategoryCode, string> = IS_DARK
+  ? { income: '#7fae6f', expense: '#dc6f5f', lend: '#d9a04e', borrow: '#9a88c8', lend_return: '#5fa9a0', borrow_repay: '#c97f9c' }
+  : { income: '#4d7c4a', expense: '#b4483b', lend: '#c27c2c', borrow: '#6d5a9c', lend_return: '#3f7f78', borrow_repay: '#a65a7a' };
+
 /** Soft backgrounds behind each category's icon. */
 export const CATEGORY_TINTS: Record<CategoryCode, string> = IS_DARK
-  ? { income: '#14352a', expense: '#3a1c22', lend: '#3a2614', borrow: '#16264a', lend_return: '#123532', borrow_repay: '#2a1f4a' }
-  : { income: '#dcfce7', expense: '#fee2e2', lend: '#ffedd5', borrow: '#dbeafe', lend_return: '#ccfbf1', borrow_repay: '#ede9fe' };
+  ? { income: '#222b1d', expense: '#3a221d', lend: '#372a18', borrow: '#2a2435', lend_return: '#1b2c29', borrow_repay: '#35222b' }
+  : { income: '#e8f0e3', expense: '#f7e4df', lend: '#f8ecd9', borrow: '#ece7f4', lend_return: '#e0efec', borrow_repay: '#f5e4eb' };
 
-/** Gradients for the coloured header cards (expo-linear-gradient colour lists). */
+/** Gradients for the coloured header cards (expo-linear-gradient colour lists): warm brown to caramel. */
 export const GRADIENTS = {
-  primary: ['#4338ca', '#6d28d9', '#a21caf'] as const,
-  night: ['#1e1b4b', '#4338ca', '#7c3aed'] as const,
+  primary: ['#5c3d2e', '#8b5e3c', '#c08552'] as const,
+  night: ['#2b1d16', '#5c3d2e', '#8b5e3c'] as const,
 };
 
 /** Soft card shadow; boxShadow works on web, iOS and Android. */
-export const SHADOW = { boxShadow: IS_DARK ? '0px 6px 20px rgba(0, 0, 0, 0.35)' : '0px 6px 20px rgba(30, 27, 75, 0.07)' } as const;
+export const SHADOW = { boxShadow: IS_DARK ? '0px 6px 20px rgba(0, 0, 0, 0.4)' : '0px 6px 20px rgba(59, 47, 42, 0.07)' } as const;
 
+// Warm minimal: cream paper, brown accent.
 const LIGHT = {
-  bg: '#f4f5fb',
+  bg: '#faf6f0',
   card: '#ffffff',
-  input: '#ffffff',
-  subtle: '#f3f4f6', // read-only boxes, table headers
-  track: '#eef0f6', // progress bar background
-  skeleton: '#e5e7eb',
-  dangerSoft: '#fef2f2', // delete buttons
-  text: '#1f2937',
-  muted: '#6b7280',
-  border: '#eceef5',
-  primary: '#4f46e5',
-  primarySoft: '#eef0ff',
-  in: '#16a34a',
-  out: '#dc2626',
-  pending: '#b45309', // slips waiting for confirmation
-  pendingBg: '#fffbeb',
-  pendingBorder: '#fbbf24',
+  input: '#fffdf9',
+  subtle: '#f6f0e7', // read-only boxes, table headers
+  track: '#efe6da', // progress bar background
+  skeleton: '#ebe2d6',
+  dangerSoft: '#fbebe7', // delete buttons
+  text: '#3b2f2a',
+  muted: '#8a7a6d',
+  border: '#efe5d9',
+  primary: '#8b5e3c',
+  primarySoft: '#f4e9dd',
+  in: '#4d7c4a',
+  out: '#b4483b',
+  pending: '#a16207', // slips waiting for confirmation
+  pendingBg: '#fff8ec',
+  pendingBorder: '#e5c07b',
 };
 
+// Espresso dark with a caramel accent.
 const DARK: typeof LIGHT = {
-  bg: '#0f1020',
-  card: '#1a1b2e',
-  input: '#14152a',
-  subtle: '#202238',
-  track: '#2a2c44',
-  skeleton: '#2a2c44',
-  dangerSoft: '#3a1c22',
-  text: '#e5e7eb',
-  muted: '#9ca3af',
-  border: '#2a2c44',
-  primary: '#6366f1',
-  primarySoft: '#25274a',
-  in: '#22c55e',
-  out: '#f87171',
-  pending: '#fbbf24',
-  pendingBg: '#2a2410',
-  pendingBorder: '#b45309',
+  bg: '#16120f',
+  card: '#211b17',
+  input: '#1b1612',
+  subtle: '#2a221d',
+  track: '#352b24',
+  skeleton: '#352b24',
+  dangerSoft: '#3a221d',
+  text: '#f1e9df',
+  muted: '#b3a495',
+  border: '#33291f',
+  primary: '#b07a4a', // dark enough for white text on buttons, light enough for links on the cards
+  primarySoft: '#3a2b1f',
+  in: '#8fbf7f',
+  out: '#e58a7c',
+  pending: '#e9b562',
+  pendingBg: '#251f19',
+  pendingBorder: '#6e5530',
 };
 
 export const COLORS = IS_DARK ? DARK : LIGHT;

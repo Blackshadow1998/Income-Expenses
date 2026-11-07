@@ -91,9 +91,9 @@ export default function AccountFormScreen() {
 
       {existing && (
         <Card style={styles.balanceCard}>
-          <Text style={{ color: '#e0e7ff' }}>เงินคงเหลือปัจจุบันของบัญชีนี้</Text>
+          <Text style={{ color: '#f5e9dc' }}>เงินคงเหลือปัจจุบันของบัญชีนี้</Text>
           <Text style={styles.balanceValue}>{money(existing.balance)} บาท</Text>
-          <Text style={{ color: '#c7d2fe', fontSize: 12 }}>{existing.transaction_count} รายการรับ/จ่าย</Text>
+          <Text style={{ color: '#e8d5c0', fontSize: 12 }}>{existing.transaction_count} รายการรับ/จ่าย</Text>
         </Card>
       )}
 

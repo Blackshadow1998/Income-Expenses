@@ -14,7 +14,7 @@ type Mode = 'login' | 'signup' | 'forgot';
 type FieldKey = 'name' | 'email' | 'username' | 'password' | 'password2';
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-const NIGHT = ['#070b1f', '#1e1b4b', '#3b0764'] as const;
+const NIGHT = ['#120c09', '#2b1d16', '#4a2f22'] as const;
 const GOLD = '#facc15';
 const TEXT_X = 46; // where typed text starts inside a field (after the icon)
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -447,7 +447,7 @@ function Segment({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }
       )}
       {(['login', 'signup'] as const).map((m) => (
         <Pressable key={m} onPress={() => onChange(m)} style={styles.segBtn}>
-          <Text style={[styles.segText, mode === m && { color: '#1e1b4b' }]}>{m === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}</Text>
+          <Text style={[styles.segText, mode === m && { color: '#2b1d16' }]}>{m === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}</Text>
         </Pressable>
       ))}
     </View>
@@ -462,9 +462,9 @@ function SubmitButton({ title, busy, onPress }: { title: string; busy: boolean; 
   }, [glow, busy]);
   return (
     <PressScale onPress={onPress} disabled={busy} scaleTo={0.97} style={styles.button}>
-      <LinearGradient colors={['#6366f1', '#8b5cf6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#8b5e3c', '#c08552']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#fde68a', opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.9] }) }]} />
-      {busy ? <ActivityIndicator color="#1e1b4b" /> : <Text style={styles.buttonText}>{title}</Text>}
+      {busy ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>{title}</Text>}
     </PressScale>
   );
 }
@@ -536,7 +536,7 @@ const styles = StyleSheet.create({
   eyeInner: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   link: { color: GOLD, fontWeight: '700' },
   error: { color: '#fca5a5', textAlign: 'center' },
-  button: { height: 54, borderRadius: 16, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', boxShadow: '0px 10px 24px rgba(99, 102, 241, 0.45)' },
+  button: { height: 54, borderRadius: 16, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', boxShadow: '0px 10px 24px rgba(139, 94, 60, 0.45)' },
   buttonText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   line: { flex: 1, height: 1, backgroundColor: 'rgba(255, 255, 255, 0.12)' },

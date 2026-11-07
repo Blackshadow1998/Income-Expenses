@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnSmall: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10 },
-  btnGlow: { boxShadow: '0px 6px 16px rgba(79, 70, 229, 0.28)' },
+  btnGlow: { boxShadow: '0px 6px 16px rgba(139, 94, 60, 0.28)' },
   btnText: { fontWeight: '700', fontSize: 15 },
   stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   stepBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primarySoft, alignItems: 'center', justifyContent: 'center' },

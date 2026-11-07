@@ -105,6 +105,7 @@ func (a *API) routes() http.Handler {
 	data("PUT /api/subcategories/{id}", a.renameSubcategory)
 	data("DELETE /api/subcategories/{id}", a.deleteSubcategory)
 	data("GET /api/debts", a.listDebts)
+	data("GET /api/insights", a.insights)
 	data("GET /api/recurring", a.listRecurring)
 	data("POST /api/recurring", a.createRecurring)
 	data("PUT /api/recurring/{id}", a.updateRecurring)

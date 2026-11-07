@@ -193,6 +193,15 @@ export interface Budget {
   spent: number; // in the requested month
 }
 
+export interface Insights {
+  out: number;
+  prev_out: number;
+  change_pct: number | null; // vs last month; null when last month had no spending
+  avg_per_day: number;
+  top: { name: string; amount: number }[];
+  biggest: Transaction | null;
+}
+
 export interface MonthData {
   month: string;
   items: Transaction[];
@@ -332,6 +341,7 @@ export const api = {
     request<YearData>(`/summary/yearly?year=${year}${accountId ? `&account_id=${accountId}` : ''}`),
 
   debts: () => request<Debt[]>('/debts'),
+  insights: (month: string) => request<Insights>(`/insights?month=${month}`),
   recurring: () => request<Recurring[]>('/recurring'),
   saveRecurring: (id: number | null, body: RecurringInput) =>
     id

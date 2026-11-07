@@ -25,6 +25,48 @@ func TestSamePerson(t *testing.T) {
 	}
 }
 
+// A K PLUS slip to a company where OCR garbled the receiver: the name line came out as noise, the company
+// name lost its vowels, and the receiver's bank sits several lines below. (Names/numbers are made up.)
+func TestRuleMatchesGarbledReceiver(t *testing.T) {
+	text := `@ โอนเงินสำเร็จ 1(<+
+ว พย, 69 15:20 น,
+นาย ทดสอบ ก
+%<
+ธ.กสิกรไทย
+ป. XXX-X-X1234-x
+อ้า
+๐
+4๐๑
+a o 56 ๐ ๓ ช้
+ย๒» บรษท ทดลองพาเลซ จากด O
+.ธ.ทหารไทยธนชาต ๐ -
+XXX-X-x5678-x ๑แผน4
+จำนวน:
+1,234.50 บาท
+ค่าธรรมเนียม:
+0.00 บาท`
+	p := parseSlip(text)
+	if p.Date != "2026-11-07" || p.ToBank != "ทหารไทยธนชาต (ttb)" || p.Amount != 1234.50 {
+		t.Fatalf("parsed %+v", p)
+	}
+	ttb := int64(7)
+	sl := Slip{FromName: p.FromName, ToName: p.ToName, OCRText: text, ToBankID: &ttb}
+	for _, c := range []struct {
+		rule SlipRule
+		want bool
+	}{
+		{SlipRule{MatchKind: "to", MatchText: "บริษัท ทดลองพาเลซ จำกัด", BankID: &ttb}, true},
+		{SlipRule{MatchKind: "to", MatchText: "ทดลองพาเลซ"}, true},
+		{SlipRule{MatchKind: "to", MatchText: "ทดสอบ"}, false}, // the sender's name isn't the receiver
+		{SlipRule{MatchKind: "from", MatchText: "ทดสอบ"}, true},
+		{SlipRule{MatchKind: "from", MatchText: "ทดลองพาเลซ"}, false},
+	} {
+		if got := c.rule.matches(sl); got != c.want {
+			t.Errorf("%s %q matches = %v, want %v (to_name %q)", c.rule.MatchKind, c.rule.MatchText, got, c.want, p.ToName)
+		}
+	}
+}
+
 func TestSlipRulesSuggestAndConfirmAsTransfer(t *testing.T) {
 	c, db := newTestServer(t)
 	owner := c.signedIn("owner") // old data: account 1 at bank 2 (KBank)

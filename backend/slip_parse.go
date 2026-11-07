@@ -66,8 +66,12 @@ func init() {
 	}
 	// Day, month (full names first so they win over abbreviations), year.
 	// Dots are stripped before matching; OCR may add spaces between Thai letters.
-	thMonthRe = regexp.MustCompile(`(\d{1,2})\s*(` + strings.Join(alts, "|") + `)\s*(\d{4}|\d{2})(?:\D|$)`)
+	thMonthRe = regexp.MustCompile(`(\d{1,2})\s*(` + strings.Join(alts, "|") + `)\s*[,']?\s*(\d{4}|\d{2})(?:\D|$)`)
+	// Tesseract often reads a lone "7" in front of a Thai month as "ว" ("ว พย, 69").
+	sevenAsWoRe = regexp.MustCompile(`(^|\s)ว(\s*(?:` + strings.Join(alts, "|") + `)\s*[,']?\s*(?:\d{4}|\d{2}))`)
 }
+
+var sevenAsWoRe *regexp.Regexp
 
 // looseThai allows optional whitespace between every rune.
 func looseThai(s string) string {
@@ -122,31 +126,64 @@ func parseSlip(text string) SlipData {
 		Ref:      findRef(lines, keys),
 		Bank:     findBank(strings.Join(keys, "\n")),
 	}.withNameFallback(lines, keys)
-	d.ToBank = findToBank(lines, keys, d.ToName)
+	d.ToBank = findToBank(lines, keys, d.FromName, d.ToName)
 	return d
 }
 
-// findToBank is the bank named on the lines right below the receiver's name (where slips put it),
-// stopping at the amount / fee part.
-func findToBank(lines, keys []string, toName string) string {
-	if toName == "" {
-		return ""
+// findToBank is the first bank named below the receiver's name (where slips put it), before the
+// amount / fee part. OCR noise lines (account numbers, a garbled company name) may sit in between.
+func findToBank(lines, keys []string, fromName, toName string) string {
+	start, end := receiverBlock(lines, keys, fromName, toName)
+	if start < 0 || toName == "" || !strings.Contains(lines[start], toName) {
+		return "" // below the sender's name is the sender's own bank
 	}
-	for i, l := range lines {
-		if !strings.Contains(l, toName) {
-			continue
+	for j := start + 1; j < end; j++ {
+		if b := findBank(keys[j]); b != "" {
+			return b
 		}
-		for j := i + 1; j < len(lines) && j <= i+3; j++ {
-			if strings.Contains(keys[j], "จำนวน") || isFeeLine(keys[j]) {
-				break
-			}
-			if b := findBank(keys[j]); b != "" {
-				return b
-			}
-		}
-		break
 	}
 	return ""
+}
+
+// receiverBlock is the line range [start, end) holding the receiver: from the line with the receiver's
+// name (looked for below the sender's, which may contain it on a transfer to oneself), or the line after
+// the sender's name when the receiver wasn't read, up to the amount / fee lines. start is -1 when
+// neither name is found.
+func receiverBlock(lines, keys []string, fromName, toName string) (start, end int) {
+	from := -1
+	for i, l := range lines {
+		if fromName != "" && strings.Contains(l, fromName) {
+			from = i
+			break
+		}
+	}
+	start = -1
+	if toName != "" {
+		for _, first := range []int{from + 1, 0} {
+			for i := first; i < len(lines) && start < 0; i++ {
+				if strings.Contains(lines[i], toName) {
+					start = i
+				}
+			}
+			if start >= 0 {
+				break
+			}
+		}
+	}
+	if start < 0 && from >= 0 {
+		start = from + 1
+	}
+	if start < 0 || start >= len(lines) {
+		return -1, -1
+	}
+	end = len(lines)
+	for j := start + 1; j < len(lines); j++ {
+		if strings.Contains(keys[j], "จำนวน") || strings.Contains(keys[j], "amount") || isFeeLine(keys[j]) {
+			end = j
+			break
+		}
+	}
+	return start, end
 }
 
 func isFeeLine(key string) bool {
@@ -199,7 +236,7 @@ func findAmount(lines, keys []string) float64 {
 
 func findDate(lines []string) string {
 	for _, l := range lines {
-		noDots := strings.ReplaceAll(l, ".", "")
+		noDots := sevenAsWoRe.ReplaceAllString(strings.ReplaceAll(l, ".", ""), "${1}7${2}")
 		if m := thMonthRe.FindStringSubmatch(noDots); m != nil {
 			if d := makeDate(m[1], thaiMonth(m[2]), m[3]); d != "" {
 				return d

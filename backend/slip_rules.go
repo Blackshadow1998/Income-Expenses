@@ -80,10 +80,31 @@ func (a *API) loadRules(ctx context.Context, uid int64) ([]SlipRule, error) {
 var (
 	titleRe    = regexp.MustCompile(`^(นางสาว|นาง|นาย|น\.?\s*ส\.?|ด\.?\s*ช\.?|ด\.?\s*ญ\.?|mrs\.?|mr\.?|ms\.?|miss)\s*`)
 	nameJunkRe = regexp.MustCompile(`[\s.]+`)
+	// Thai marks above/below a letter (vowels, tone marks, ์), which Tesseract often drops or misplaces.
+	thaiMarksRe = regexp.MustCompile(`[\x{0E31}\x{0E34}-\x{0E3A}\x{0E47}-\x{0E4E}]`)
 )
 
-// matchKey lowercases and drops spaces and dots, so "ร้าน ป้า" matches "ร้านป้า".
-func matchKey(s string) string { return nameJunkRe.ReplaceAllString(strings.ToLower(s), "") }
+// matchKey lowercases and drops spaces, dots and Thai vowel/tone marks (ำ counts as า), so
+// "บริษัท สุรางค์พาเลซ จำกัด" matches the OCR's "บรษท สุรางคพาเลซ จากด".
+func matchKey(s string) string {
+	s = strings.ReplaceAll(strings.ToLower(s), "ำ", "า")
+	return thaiMarksRe.ReplaceAllString(nameJunkRe.ReplaceAllString(s, ""), "")
+}
+
+// slipParts splits the slip's OCR text into the sender part and the receiver part (see receiverBlock),
+// so a rule can match a name the parser didn't pick up as from/to. Both are "" without OCR text.
+func slipParts(sl Slip) (sender, receiver string) {
+	lines := normalizeOCR(sl.OCRText)
+	keys := make([]string, len(lines))
+	for i, l := range lines {
+		keys[i] = compact(l)
+	}
+	start, end := receiverBlock(lines, keys, sl.FromName, sl.ToName)
+	if start < 0 {
+		return "", ""
+	}
+	return strings.Join(lines[:start], "\n"), strings.Join(lines[start:end], "\n")
+}
 
 // samePerson: sender and receiver are one person, allowing for the title and a shortened surname
 // ("นาย สมชาย ใ" vs "สมชาย ใจดี").
@@ -105,14 +126,18 @@ func (r SlipRule) matches(sl Slip) bool {
 	if r.BankID != nil && (sl.ToBankID == nil || *sl.ToBankID != *r.BankID) {
 		return false
 	}
-	switch r.MatchKind {
-	case "self":
+	if r.MatchKind == "self" {
 		return samePerson(sl.FromName, sl.ToName)
-	case "from":
-		return r.MatchText != "" && strings.Contains(matchKey(sl.FromName), matchKey(r.MatchText))
-	default:
-		return r.MatchText != "" && strings.Contains(matchKey(sl.ToName), matchKey(r.MatchText))
 	}
+	want := matchKey(r.MatchText)
+	if want == "" {
+		return false
+	}
+	sender, receiver := slipParts(sl)
+	if r.MatchKind == "from" {
+		return strings.Contains(matchKey(sl.FromName), want) || strings.Contains(matchKey(sender), want)
+	}
+	return strings.Contains(matchKey(sl.ToName), want) || strings.Contains(matchKey(receiver), want)
 }
 
 // suggest returns what the first matching rule says to record for the slip, with accounts filled in

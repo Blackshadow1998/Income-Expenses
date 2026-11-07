@@ -166,10 +166,16 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 
 ## สำรองข้อมูล
 
-**อัตโนมัติ:** API สำรอง DB วันละครั้ง (`VACUUM INTO` — ไม่ต้องหยุดระบบ) ไปที่ `backups/auto/income_expenses-YYYY-MM-DD.db`
-บนดิสก์ของคอม (นอก Docker volume) เก็บ 30 ไฟล์ล่าสุด ตั้งค่าด้วย `BACKUP_DIR` ใน `docker-compose.yml`
+**อัตโนมัติ:** API สำรอง DB วันละครั้ง (`VACUUM INTO` — ไม่ต้องหยุดระบบ) เป็น `income_expenses-YYYY-MM-DD.db`
+เก็บ 30 ไฟล์ล่าสุด และสำเนารูปสลิปไว้ใน `slips/` ปลายทางคือ `backups/auto` หรือโฟลเดอร์ที่ตั้งใน `.env`
+เช่น OneDrive (อัปโหลดขึ้น cloud ให้เอง):
 
-กู้คืน: `docker compose stop` → `docker cp backups/auto/<ไฟล์>.db income-expenses-api:/app/data/income_expenses.db` → `docker compose start`
+```
+BACKUP_HOST_DIR=C:/Users/<ชื่อ>/OneDrive/IncomeExpenses-Backups
+```
+
+กู้คืน: `docker compose stop` → `docker cp <โฟลเดอร์ backup>/<ไฟล์>.db income-expenses-api:/app/data/income_expenses.db`
+(และ `docker cp <โฟลเดอร์ backup>/slips/. income-expenses-api:/app/data/slips/` ถ้ารูปหาย) → `docker compose start`
 
 **สำรองเอง:**
 

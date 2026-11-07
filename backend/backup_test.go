@@ -49,3 +49,24 @@ func TestDailyBackupWritesOncePerDayAndPrunes(t *testing.T) {
 		t.Fatal("oldest backup should have been pruned")
 	}
 }
+
+func TestMirrorDir(t *testing.T) {
+	src, dst := t.TempDir(), filepath.Join(t.TempDir(), "slips")
+	os.WriteFile(filepath.Join(src, "a.jpg"), []byte("aaa"), 0o644)
+	os.WriteFile(filepath.Join(src, "b.jpg"), []byte("bb"), 0o644)
+	if n, err := mirrorDir(src, dst); err != nil || n != 2 {
+		t.Fatalf("first mirror: %d %v", n, err)
+	}
+	if n, _ := mirrorDir(src, dst); n != 0 {
+		t.Fatalf("nothing changed, but mirror did %d", n)
+	}
+	os.Remove(filepath.Join(src, "a.jpg"))
+	os.WriteFile(filepath.Join(src, "c.jpg"), []byte("c"), 0o644)
+	if n, err := mirrorDir(src, dst); err != nil || n != 2 {
+		t.Fatalf("add + delete: %d %v", n, err)
+	}
+	entries, _ := os.ReadDir(dst)
+	if len(entries) != 2 || entries[0].Name() != "b.jpg" || entries[1].Name() != "c.jpg" {
+		t.Fatalf("dst = %v", entries)
+	}
+}

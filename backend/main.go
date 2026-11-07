@@ -70,7 +70,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if dir := getenv("BACKUP_DIR", ""); dir != "" {
-		go runBackups(ctx, db, dir, 30)
+		go runBackups(ctx, db, dir, slipsDir, 30)
 	}
 	go runRecurring(ctx, db)
 	go func() {

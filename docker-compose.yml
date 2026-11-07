@@ -12,7 +12,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-} # set in .env (repo root) to turn on Google sign-in
     volumes:
       - income_expenses_data:/app/data
-      - ./backups/auto:/app/backups # on the PC's disk, outside the Docker volume (gitignored)
+      # Daily DB copies + slip images on the PC's disk, outside the Docker volume. Set BACKUP_HOST_DIR in
+      # .env to a cloud-synced folder (e.g. OneDrive) for an off-machine copy; default is ./backups/auto.
+      - ${BACKUP_HOST_DIR:-./backups/auto}:/app/backups
     restart: unless-stopped
 
 volumes:

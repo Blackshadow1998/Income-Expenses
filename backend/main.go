@@ -28,6 +28,12 @@ func main() {
 	}
 	defer db.Close()
 
+	if n, err := reparsePendingSlips(context.Background(), db); err != nil {
+		logger.Printf("re-read pending slips: %v", err)
+	} else if n > 0 {
+		logger.Printf("re-read %d pending slip(s) with the current parser", n)
+	}
+
 	// Admin command: /app/api reset-password <username>
 	if len(os.Args) == 3 && os.Args[1] == "reset-password" {
 		temp, err := resetPassword(context.Background(), db, os.Args[2])

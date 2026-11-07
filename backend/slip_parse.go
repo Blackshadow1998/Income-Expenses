@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // SlipData is what we could read from a bank transfer slip. Empty/zero fields were not found.
@@ -60,7 +61,7 @@ func init() {
 		alts = append(alts, looseThai(full[i]))
 	}
 	for i := range short {
-		alts = append(alts, looseThai(short[i]))
+		alts = append(alts, looseAbbrev(short[i]))
 	}
 	// Day, month (full names first so they win over abbreviations), year.
 	// Dots are stripped before matching; OCR may add spaces between Thai letters.
@@ -74,6 +75,16 @@ func looseThai(s string) string {
 		parts = append(parts, regexp.QuoteMeta(string(r)))
 	}
 	return strings.Join(parts, `\s*`)
+}
+
+// looseAbbrev is looseThai for month abbreviations, where OCR often reads the dot between letters
+// as a below-vowel mark (พ.ย. -> "พุย").
+func looseAbbrev(s string) string {
+	var parts []string
+	for _, r := range s {
+		parts = append(parts, regexp.QuoteMeta(string(r)))
+	}
+	return strings.Join(parts, `[\s\x{0E38}\x{0E39}\x{0E3A},']*`)
 }
 
 // normalizeOCR fixes common Thai OCR artifacts and splits into trimmed, non-empty lines.
@@ -164,7 +175,7 @@ func findDate(lines []string) string {
 	for _, l := range lines {
 		noDots := strings.ReplaceAll(l, ".", "")
 		if m := thMonthRe.FindStringSubmatch(noDots); m != nil {
-			if d := makeDate(m[1], thMonthIdx[spacesRe.ReplaceAllString(m[2], "")], m[3]); d != "" {
+			if d := makeDate(m[1], thaiMonth(m[2]), m[3]); d != "" {
 				return d
 			}
 		}
@@ -181,6 +192,16 @@ func findDate(lines []string) string {
 		}
 	}
 	return ""
+}
+
+// thaiMonth maps a matched month name to 1–12. Full names keep their vowels; abbreviations may carry
+// OCR noise marks in place of the dots (see looseAbbrev), which are dropped before the lookup.
+func thaiMonth(s string) int {
+	s = spacesRe.ReplaceAllString(s, "")
+	if m, ok := thMonthIdx[s]; ok {
+		return m
+	}
+	return thMonthIdx[strings.NewReplacer("ุ", "", "ู", "", "ฺ", "", ",", "", "'", "").Replace(s)]
 }
 
 // makeDate turns day/month/year (2- or 4-digit, Buddhist or Christian era) into YYYY-MM-DD.
@@ -236,30 +257,78 @@ func stripLabel(line, label string) string {
 var namePrefixes = []string{"นาย", "นางสาว", "นาง", "นส", "ดช", "ดญ", "คุณ", "mr", "mrs", "ms", "miss",
 	"บจก", "บริษัท", "หจก", "ร้าน", "บมจ", "co", "company"}
 
-// withNameFallback fills missing names from lines that start with a personal/company title:
-// on Thai slips the sender is listed first and the receiver second.
+var (
+	leadingJunkRe = regexp.MustCompile(`^[^\p{L}]+`)              // OCR noise before a name, e.g. ") นาย" or "๓@ ร้าน"
+	accountRe     = regexp.MustCompile(`[xX%*•\d][xX%*•\d-]{6,}`) // masked account number, e.g. xxx-x-x1234-x
+	slipLabels    = []string{"จำนวน", "เลขที่", "รหัส", "สำเร็จ", "ค่าธรรม", "บาท", "amount", "ref"}
+)
+
+// withNameFallback fills missing names on slips without จาก/ไปยัง labels (K PLUS style): the sender
+// is the first line starting with a personal/company title; the receiver is the next titled line or,
+// for shops and billers without a title, the first name-like line after the sender's account number.
 func (d SlipData) withNameFallback(lines, keys []string) SlipData {
 	if d.FromName != "" && d.ToName != "" {
 		return d
 	}
-	var names []string
-	for i, k := range keys {
+	fromAt := -1
+	for i := range lines {
+		name := cleanName(leadingJunkRe.ReplaceAllString(lines[i], ""))
+		k := compact(name)
+		titled := false
 		for _, p := range namePrefixes {
 			if strings.HasPrefix(k, p) && digitRatio(k) < 0.3 {
-				names = append(names, cleanName(lines[i]))
+				titled = true
 				break
 			}
 		}
-	}
-	for _, n := range names {
 		switch {
-		case d.FromName == "" && n != d.ToName:
-			d.FromName = n
-		case d.ToName == "" && n != d.FromName:
-			d.ToName = n
+		case !titled:
+		case d.FromName == "" && name != d.ToName:
+			d.FromName, fromAt = name, i
+		case d.ToName == "" && name != d.FromName:
+			d.ToName = name
 		}
 	}
+	if d.ToName != "" || fromAt < 0 {
+		return d
+	}
+	for i := fromAt + 1; i < len(lines); i++ {
+		if !accountRe.MatchString(strings.ReplaceAll(lines[i], " ", "")) {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			if name, ok := nameLike(lines[j], keys[j]); ok {
+				d.ToName = name
+				return d
+			}
+			if isFeeLine(keys[j]) || strings.Contains(keys[j], "จำนวน") {
+				return d
+			}
+		}
+		return d
+	}
 	return d
+}
+
+// nameLike returns the line as a name when, after dropping OCR junk in front, it is mostly letters
+// and not a bank name or one of the slip's own labels.
+func nameLike(line, key string) (string, bool) {
+	name := cleanName(leadingJunkRe.ReplaceAllString(line, ""))
+	letters := 0
+	for _, r := range name {
+		if unicode.IsLetter(r) {
+			letters++
+		}
+	}
+	if letters < 2 || digitRatio(compact(name)) >= 0.3 || findBank(key) != "" {
+		return "", false
+	}
+	for _, l := range slipLabels {
+		if strings.Contains(key, l) {
+			return "", false
+		}
+	}
+	return name, true
 }
 
 func findRef(lines, keys []string) string {

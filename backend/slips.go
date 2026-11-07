@@ -278,6 +278,72 @@ func (a *API) deleteSlip(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// reparsePendingSlips reads the stored OCR text of slips still waiting for confirmation with the
+// current parser, so parser fixes reach slips uploaded before them. It only fills fields that are
+// missing, never overwrites what was read before.
+func reparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
+	type slipRow struct {
+		id                   int64
+		text, date, from, to string
+		ref                  string
+		dateFound            bool
+		amount               int64
+		bankID               *int64
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, ocr_text, slip_date, from_name, to_name, ref, date_found, amount_satang, bank_id
+		FROM slips WHERE status = 'pending' AND ocr_text <> ''`)
+	if err != nil {
+		return 0, err
+	}
+	var list []slipRow
+	for rows.Next() {
+		var s slipRow
+		if err := rows.Scan(&s.id, &s.text, &s.date, &s.from, &s.to, &s.ref, &s.dateFound, &s.amount, &s.bankID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		list = append(list, s)
+	}
+	rows.Close()
+
+	updated := 0
+	for _, s := range list {
+		p := parseSlip(s.text)
+		changed := false
+		if !s.dateFound && p.Date != "" {
+			s.date, s.dateFound, changed = p.Date, true, true
+		}
+		if s.amount == 0 && p.Amount > 0 {
+			s.amount, changed = toSatang(p.Amount), true
+		}
+		for _, f := range []struct {
+			cur   *string
+			found string
+		}{{&s.from, p.FromName}, {&s.to, p.ToName}, {&s.ref, p.Ref}} {
+			if *f.cur == "" && f.found != "" {
+				*f.cur, changed = f.found, true
+			}
+		}
+		if s.bankID == nil && p.Bank != "" {
+			var id int64
+			if db.QueryRowContext(ctx, `SELECT id FROM banks WHERE name = ?`, p.Bank).Scan(&id) == nil {
+				s.bankID, changed = &id, true
+			}
+		}
+		if !changed {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, `
+			UPDATE slips SET slip_date = ?, date_found = ?, amount_satang = ?, from_name = ?, to_name = ?, ref = ?, bank_id = ?
+			WHERE id = ?`, s.date, s.dateFound, s.amount, s.from, s.to, s.ref, s.bankID, s.id); err != nil {
+			return updated, err
+		}
+		updated++
+	}
+	return updated, nil
+}
+
 func (a *API) removeSlipFile(file string) {
 	if file == "" {
 		return

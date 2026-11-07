@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Account, api, Budget, Category, MonthData, Slip, Transaction, Transfer } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
 import { BudgetCard } from '@/components/BudgetCard';
@@ -26,6 +26,7 @@ export default function MonthScreen() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [slipMenu, setSlipMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const monthRef = useRef<string | null>(null);
   const reqId = useRef(0);
@@ -97,9 +98,20 @@ export default function MonthScreen() {
     if (monthRef.current) loadMonth(monthRef.current);
   };
 
-  // Pick one or more slip images, let the server read them, then jump to the month of the slip.
-  const onReadSlips = async () => {
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 1 });
+  // Take a photo of a slip or pick slip images, let the server read them, then jump to the month of the slip.
+  const onReadSlips = async (source: 'camera' | 'library') => {
+    setSlipMenu(false);
+    let picked: ImagePicker.ImagePickerResult;
+    if (source === 'camera') {
+      // On web the camera must open straight from the tap, so there is no permission round-trip first.
+      if (Platform.OS !== 'web' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) {
+        showError(new Error('ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องให้แอปในการตั้งค่าเครื่อง'));
+        return;
+      }
+      picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.9 });
+    } else {
+      picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 1 });
+    }
     if (picked.canceled || !picked.assets?.length) return;
     setUploading(true);
     try {
@@ -229,13 +241,19 @@ export default function MonthScreen() {
               title={uploading ? 'กำลังอ่าน...' : 'สลิป'}
               icon="📷"
               variant="soft"
-              onPress={onReadSlips}
+              onPress={() => setSlipMenu((v) => !v)}
               disabled={uploading}
               style={{ flex: 1 }}
             />
             <Button title="โอน" icon="⇄" variant="soft" onPress={() => goTransfer()} style={{ flex: 1 }} />
             <Button title="เพิ่ม" icon="＋" onPress={goAdd} style={{ flex: 1.2 }} />
           </FadeIn>
+          {slipMenu && (
+            <FadeIn from={-8} style={styles.slipMenu}>
+              <Button title="ถ่ายรูปสลิป" icon="📸" variant="outline" onPress={() => onReadSlips('camera')} style={{ flex: 1 }} />
+              <Button title="เลือกจากคลังภาพ" icon="🖼️" variant="outline" onPress={() => onReadSlips('library')} style={{ flex: 1 }} />
+            </FadeIn>
+          )}
 
           {data.pending.length > 0 && (
             <View style={{ gap: 8 }}>
@@ -492,6 +510,7 @@ const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '50%' },
   actions: { flexDirection: 'row', gap: 10 },
+  slipMenu: { flexDirection: 'row', gap: 10, marginTop: -4 },
   h2: { fontSize: 18, fontWeight: '800', color: COLORS.text },
   listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   searchBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: COLORS.primarySoft },

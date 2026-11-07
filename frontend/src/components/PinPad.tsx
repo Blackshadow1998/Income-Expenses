@@ -1,22 +1,23 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
-import { COLORS, GRADIENTS, SHADOW } from '../format';
+import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { FadeIn, GridLoader, PressScale, Shake, ShakeHandle } from './motion';
+import { VAULT, VaultDial } from './VaultDial';
 
 export const PIN_LENGTH = 6;
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
 /**
- * Bank-app style 6-digit PIN entry. Calls onComplete once all digits are in and clears them after it
- * settles. On web the number keys and Backspace work too (turn off with listenKeys when another pad is on top).
+ * 6-digit PIN entry on a safe dial (see VaultDial). Calls onComplete once all digits are in and clears
+ * them after it settles; `granted` shows the unlocked dial. On web the number keys and Backspace work
+ * too (turn off with listenKeys when another pad is on top).
  */
 export function PinPad({
   title,
   subtitle,
   error,
   busy,
+  granted,
   onComplete,
   footer,
   listenKeys = true,
@@ -25,11 +26,14 @@ export function PinPad({
   subtitle?: string;
   error?: string | null;
   busy?: boolean;
+  granted?: boolean;
   onComplete: (pin: string) => Promise<void> | void;
   footer?: ReactNode;
   listenKeys?: boolean;
 }) {
   const [digits, setDigits] = useState('');
+  const { width } = useWindowDimensions();
+  const dialSize = Math.min(320, width - 48);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -66,21 +70,19 @@ export function PinPad({
 
   return (
     <FadeIn style={styles.wrap}>
-      <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.lock}>
-        <Text style={{ fontSize: 28 }}>🔒</Text>
-      </LinearGradient>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.title}>{granted ? 'ปลดล็อกแล้ว' : title}</Text>
       {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
 
       <Shake ref={shaker}>
-        <View style={styles.dots} accessibilityLabel={`ใส่แล้ว ${digits.length} จาก ${PIN_LENGTH} หลัก`}>
-          {Array.from({ length: PIN_LENGTH }, (_, i) => (
-            <Dot key={i} filled={i < digits.length} />
-          ))}
-        </View>
+        <VaultDial
+          digits={digits}
+          length={PIN_LENGTH}
+          size={dialSize}
+          mode={granted ? 'granted' : error && digits.length === 0 ? 'denied' : 'idle'}
+        />
       </Shake>
       <View style={styles.status}>
-        {busy ? <GridLoader size={22} /> : !!error && <Text style={styles.error}>{error}</Text>}
+        {busy && !granted ? <GridLoader size={22} /> : !!error && !granted && <Text style={styles.error}>{error}</Text>}
       </View>
 
       <View style={styles.keypad}>
@@ -105,47 +107,30 @@ export function PinPad({
   );
 }
 
-/** PIN dot that pops when a digit is entered. */
-function Dot({ filled }: { filled: boolean }) {
-  const v = useState(() => new Animated.Value(filled ? 1 : 0))[0];
-  useEffect(() => {
-    Animated.spring(v, { toValue: filled ? 1 : 0, speed: 30, bounciness: 14, useNativeDriver: Platform.OS !== 'web' }).start();
-  }, [v, filled]);
-  return (
-    <View style={styles.dot}>
-      <Animated.View style={[styles.dotFill, { transform: [{ scale: v }] }]} />
-    </View>
-  );
-}
-
+// Always dark (a vault), whatever the app theme; on a light page it shows as a dark panel.
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', gap: 10, padding: 24, width: '100%', maxWidth: 360, alignSelf: 'center' },
-  lock: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
+  wrap: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-    boxShadow: '0px 10px 24px rgba(139, 94, 60, 0.35)',
+    gap: 8,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    backgroundColor: VAULT.bg,
+    borderRadius: 28,
   },
-  title: { fontSize: 20, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
-  subtitle: { color: COLORS.muted, textAlign: 'center' },
-  dots: { flexDirection: 'row', gap: 14, marginTop: 12 },
-  dot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  title: { fontSize: 20, fontWeight: '800', color: VAULT.text, textAlign: 'center' },
+  subtitle: { color: VAULT.muted, textAlign: 'center', marginBottom: 6 },
+  status: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 8 },
+  error: { color: VAULT.red, textAlign: 'center' },
+  keypad: { flexDirection: 'row', flexWrap: 'wrap', width: 3 * 70 + 2 * 14, gap: 12, columnGap: 14 }, // 3 keys per row
+  key: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center' },
+  keyDigit: {
+    backgroundColor: '#1d1713',
+    borderWidth: 1,
+    borderColor: 'rgba(233, 181, 98, 0.22)',
+    boxShadow: '0px 6px 14px rgba(0, 0, 0, 0.45)',
   },
-  dotFill: { width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.primary },
-  status: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 8 },
-  error: { color: COLORS.out, textAlign: 'center' },
-  keypad: { flexDirection: 'row', flexWrap: 'wrap', width: 3 * 76 + 2 * 12, gap: 12 }, // 3 keys per row
-  key: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center' },
-  keyDigit: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, ...SHADOW },
-  keyText: { fontSize: 28, fontWeight: '600', color: COLORS.text },
+  keyText: { fontSize: 26, fontWeight: '600', color: VAULT.text },
 });

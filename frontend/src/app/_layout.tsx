@@ -72,12 +72,12 @@ function Gate() {
         </Overlay>
       )}
       {status === 'needsPin' && (
-        <Overlay>
+        <Overlay vault>
           <PinSetupScreen />
         </Overlay>
       )}
       {status === 'locked' && (
-        <Overlay>
+        <Overlay vault>
           <PinLockScreen />
         </Overlay>
       )}

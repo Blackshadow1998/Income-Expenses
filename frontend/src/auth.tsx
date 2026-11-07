@@ -26,7 +26,8 @@ interface AuthValue {
   replaceTempPassword: (current: string, next: string) => Promise<void>;
   refreshUser: () => Promise<void>;
   signInWithGoogle: (credential: string) => Promise<void>;
-  unlock: (pin: string) => Promise<void>;
+  /** `beforeOpen` runs after the PIN is accepted and before the app is shown (e.g. an unlock animation). */
+  unlock: (pin: string, beforeOpen?: () => Promise<void>) => Promise<void>;
   setPin: (pin: string, currentPin?: string) => Promise<void>;
   lockNow: () => void;
   signOut: () => Promise<void>;
@@ -158,8 +159,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       refreshUser: async () => setUser((await api.auth.me()).user),
       signInWithGoogle: async (credential) => signedIn(await api.auth.google(credential)),
-      unlock: async (pin) => {
+      unlock: async (pin, beforeOpen) => {
         await api.auth.unlock(pin);
+        await beforeOpen?.();
         unlocked();
       },
       setPin: async (pin, currentPin) => {

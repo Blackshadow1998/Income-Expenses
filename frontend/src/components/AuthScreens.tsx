@@ -4,6 +4,7 @@ import { ApiError } from '../api';
 import { useAuth } from '../auth';
 import { COLORS } from '../format';
 import { PinPad } from './PinPad';
+import { VAULT } from './VaultDial';
 import { Button, Card, ErrorBox, Loading } from './ui';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -125,12 +126,17 @@ export function PinLockScreen() {
   const { unlock, forgotPin, user } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [granted, setGranted] = useState(false);
 
   const onComplete = async (pin: string) => {
     setBusy(true);
     setError(null);
     try {
-      await unlock(pin);
+      // Let the dial show "unlocked" for a moment before the app appears.
+      await unlock(pin, async () => {
+        setGranted(true);
+        await new Promise((r) => setTimeout(r, 1100));
+      });
     } catch (e) {
       // After too many wrong PINs the session is gone and the sign-in screen replaces this one.
       if (!(e instanceof ApiError && e.code === 'unauthenticated')) setError(errorText(e));
@@ -145,6 +151,7 @@ export function PinLockScreen() {
       subtitle={user ? `สวัสดี ${user.name}` : undefined}
       error={error}
       busy={busy}
+      granted={granted}
       onComplete={onComplete}
       footer={<FooterLink title="ลืม PIN? เข้าสู่ระบบด้วยรหัสผ่าน" onPress={forgotPin} />}
     />
@@ -159,10 +166,10 @@ function FooterLink({ title, onPress }: { title: string; onPress: () => void }) 
   );
 }
 
-/** Full-screen cover for the PIN screens, drawn above the app's navigator. */
-export function Overlay({ children }: { children: React.ReactNode }) {
+/** Full-screen cover for the PIN screens, drawn above the app's navigator. `vault` = the dark PIN look. */
+export function Overlay({ children, vault }: { children: React.ReactNode; vault?: boolean }) {
   return (
-    <View style={styles.overlay}>
+    <View style={[styles.overlay, vault && { backgroundColor: VAULT.bg }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>{children}</ScrollView>
     </View>
   );
@@ -171,7 +178,7 @@ export function Overlay({ children }: { children: React.ReactNode }) {
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', backgroundColor: COLORS.bg },
   overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: COLORS.bg, zIndex: 1000 },
-  link: { color: COLORS.primary, textAlign: 'center', fontWeight: '600' },
+  link: { color: VAULT.gold, textAlign: 'center', fontWeight: '600' }, // footer of the (dark) PIN pad
   newPassword: { gap: 12, padding: 24, width: '100%', maxWidth: 400, alignSelf: 'center' },
   title: { fontSize: 20, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
   sub: { color: COLORS.muted, textAlign: 'center' },

@@ -58,7 +58,12 @@ npx expo start --web
   - **ลืมรหัสผ่าน** → ผู้ดูแลรันบนคอม `docker exec income-expenses-api /app/api reset-password <ชื่อผู้ใช้>`
     ได้รหัสชั่วคราว (ทุกอุปกรณ์ของผู้ใช้นั้นถูกออกจากระบบ) → เข้าสู่ระบบแล้วเปลี่ยนรหัสที่หน้า ตั้งค่า
   - ข้อมูลที่บันทึกไว้ก่อนมีระบบผู้ใช้ จะเป็นของ **ผู้ใช้คนแรกที่สมัคร**
-  - โครงสร้างเผื่อเข้าสู่ระบบด้วย Google ภายหลัง (ตาราง `identities`: provider `password` / `google`)
+  - **เข้าสู่ระบบด้วย Google** (ปิดอยู่จนกว่าจะตั้ง `GOOGLE_CLIENT_ID`): Google รับเฉพาะเว็บ HTTPS จึงต้อง
+    1. Tailscale admin → DNS → เปิด **HTTPS Certificates** แล้วรัน `tailscale serve --bg 8080` → ได้ `https://<เครื่อง>.<tailnet>.ts.net`
+    2. Google Cloud Console → APIs & Services → Credentials → **OAuth client ID** (Web application) →
+       Authorized JavaScript origins = ลิงก์ https ข้างบน
+    3. สร้างไฟล์ `.env` ที่โฟลเดอร์โปรเจกต์: `GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com` แล้ว `docker compose up -d`
+    - ปุ่ม Google จะขึ้นที่หน้าเข้าสู่ระบบ (ผู้ใช้ใหม่ = สมัครอัตโนมัติ) และที่ ตั้งค่า (เชื่อมกับบัญชีเดิม)
 - **หน้ารายเดือน** — เลือกเดือนด้วย ◀ ▶ หรือแตะชิปเดือน, ค่าเริ่มต้นคือเดือนล่าสุด
   แสดงเงินเข้า/ออก/สุทธิของเดือน, เงินคงเหลือทั้งหมด, ยอดแยกตามหมวด และปุ่ม **เพิ่ม / แก้ไข / ลบ**
 - **หน้าสรุปรายปี** — กราฟแท่งรายเดือน (โหมด เข้า/ออก หรือ แยกหมวด), แตะเดือนเพื่อดูรายละเอียด, ตารางสรุป 12 เดือน

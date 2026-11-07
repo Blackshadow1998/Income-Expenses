@@ -26,4 +26,4 @@ commit + push ทีละข้อ แล้วติ๊กในไฟล์�
 - [x] 11. สรุปเชิงลึก (เทียบเดือนก่อน, หมวดที่ใช้มากสุด, เฉลี่ยต่อวัน)
 - [x] 12. Dark mode
 - [x] 13. ส่งออก Excel/CSV
-- [ ] 14. ล็อกอินด้วย Google (ตาราง `identities` รองรับแล้ว)
+- [x] 14. ล็อกอินด้วย Google — โค้ดพร้อม; เปิดใช้ได้เมื่อมี HTTPS (Tailscale) + Google OAuth Client ID (ดู README)

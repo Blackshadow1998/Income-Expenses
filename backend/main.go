@@ -48,7 +48,8 @@ func main() {
 	if _, err := rand.Read(imageKey); err != nil {
 		logger.Fatalf("image key: %v", err)
 	}
-	api := &API{db: db, slipsDir: slipsDir, imageKey: imageKey}
+	api := &API{db: db, slipsDir: slipsDir, imageKey: imageKey,
+		googleClientID: os.Getenv("GOOGLE_CLIENT_ID"), verifyGoogle: verifyGoogleToken}
 	if dir := getenv("WEB_DIR", "./web"); fileExists(dir + "/index.html") {
 		api.webDir = dir
 		logger.Printf("serving web app from %s", dir)

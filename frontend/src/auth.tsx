@@ -20,6 +20,7 @@ interface AuthValue {
   error: string | null; // why we're offline
   signIn: (username: string, password: string) => Promise<void>;
   signUp: (name: string, username: string, password: string) => Promise<void>;
+  signInWithGoogle: (credential: string) => Promise<void>;
   unlock: (pin: string) => Promise<void>;
   setPin: (pin: string, currentPin?: string) => Promise<void>;
   lockNow: () => void;
@@ -129,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       error,
       signIn: async (username, password) => signedIn(await api.auth.login({ username, password })),
       signUp: async (name, username, password) => signedIn(await api.auth.signup({ name, username, password })),
+      signInWithGoogle: async (credential) => signedIn(await api.auth.google(credential)),
       unlock: async (pin) => {
         await api.auth.unlock(pin);
         unlocked();

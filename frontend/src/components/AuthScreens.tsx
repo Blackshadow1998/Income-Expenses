@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { ApiError } from '../api';
 import { useAuth } from '../auth';
 import { COLORS, GRADIENTS } from '../format';
+import { GoogleButton } from './GoogleButton';
 import { FadeIn } from './motion';
 import { PinPad } from './PinPad';
 import { Button, Card, ErrorBox, Loading } from './ui';
@@ -29,7 +30,7 @@ export function OfflineScreen() {
 
 /** Username + password sign-in, with a switch to sign-up. */
 export function SignInScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogle } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -116,6 +117,17 @@ export function SignInScreen() {
             <Pressable onPress={switchMode} hitSlop={8}>
               <Text style={styles.link}>{signup ? 'มีบัญชีอยู่แล้ว? เข้าสู่ระบบ' : 'ยังไม่มีบัญชี? สมัครสมาชิก'}</Text>
             </Pressable>
+            <GoogleButton
+              text={signup ? 'continue_with' : 'signin_with'}
+              onCredential={async (credential) => {
+                setError(null);
+                try {
+                  await signInWithGoogle(credential);
+                } catch (e) {
+                  setError(errorText(e));
+                }
+              }}
+            />
           </Card>
         </FadeIn>
         <Text style={styles.note}>

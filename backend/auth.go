@@ -204,48 +204,53 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "ชื่อผู้ใช้นี้มีคนใช้แล้ว"})
 		return
 	}
-	res, err := tx.ExecContext(r.Context(), `INSERT INTO users (name) VALUES (?)`, in.Name)
+	uid, err := newUser(r.Context(), tx, in.Name)
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	uid, _ := res.LastInsertId()
 	if _, err := tx.ExecContext(r.Context(),
 		`INSERT INTO identities (user_id, provider, subject, secret_hash) VALUES (?, 'password', ?, ?)`,
 		uid, in.Username, string(hash)); err != nil {
 		serverError(w, err)
 		return
 	}
-	// The first user takes over the data recorded before sign-in existed.
-	var users int
-	if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM users`).Scan(&users); err != nil {
-		serverError(w, err)
-		return
-	}
-	if users == 1 {
-		for _, table := range []string{"accounts", "transactions", "slips", "subcategories"} {
-			if _, err := tx.ExecContext(r.Context(), `UPDATE `+table+` SET user_id = ? WHERE user_id IS NULL`, uid); err != nil {
-				serverError(w, err)
-				return
-			}
-		}
-	}
-	var items int
-	if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM subcategories WHERE user_id = ?`, uid).Scan(&items); err != nil {
-		serverError(w, err)
-		return
-	}
-	if items == 0 {
-		if _, err := tx.ExecContext(r.Context(), starterSubcategories, uid); err != nil {
-			serverError(w, err)
-			return
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		serverError(w, err)
 		return
 	}
 	a.startSession(w, r, uid, http.StatusCreated)
+}
+
+// newUser creates a user (any sign-in method). The first user takes over the data recorded before
+// sign-in existed; anyone without an item list gets the starter one.
+func newUser(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
+	res, err := tx.ExecContext(ctx, `INSERT INTO users (name) VALUES (?)`, name)
+	if err != nil {
+		return 0, err
+	}
+	uid, _ := res.LastInsertId()
+	var users int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&users); err != nil {
+		return 0, err
+	}
+	if users == 1 {
+		for _, table := range []string{"accounts", "transactions", "slips", "subcategories"} {
+			if _, err := tx.ExecContext(ctx, `UPDATE `+table+` SET user_id = ? WHERE user_id IS NULL`, uid); err != nil {
+				return 0, err
+			}
+		}
+	}
+	var items int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM subcategories WHERE user_id = ?`, uid).Scan(&items); err != nil {
+		return 0, err
+	}
+	if items == 0 {
+		if _, err := tx.ExecContext(ctx, starterSubcategories, uid); err != nil {
+			return 0, err
+		}
+	}
+	return uid, nil
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {

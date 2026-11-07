@@ -83,7 +83,7 @@ func (c testClient) signedIn(username string) string {
 	return token
 }
 
-func newTestServer(t *testing.T) (testClient, *sql.DB) {
+func newTestServer(t *testing.T, opts ...func(*API)) (testClient, *sql.DB) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.db")
 	old, err := sql.Open("sqlite", "file:"+path)
@@ -101,6 +101,9 @@ func newTestServer(t *testing.T) (testClient, *sql.DB) {
 	}
 	t.Cleanup(func() { db.Close() })
 	api := &API{db: db, slipsDir: dir, imageKey: []byte("test-key")}
+	for _, o := range opts {
+		o(api)
+	}
 	srv := httptest.NewServer(api.routes())
 	t.Cleanup(srv.Close)
 	return testClient{t: t, srv: srv}, db

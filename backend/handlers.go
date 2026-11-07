@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -60,6 +61,9 @@ type API struct {
 	slipsDir string // uploaded slip images
 	imageKey []byte // signs slip image links (see slipImageURL)
 	webDir   string // exported web app; "" = API only
+
+	googleClientID string // Google sign-in is off when empty
+	verifyGoogle   func(ctx context.Context, clientID, idToken string) (googleClaims, error)
 }
 
 func (a *API) routes() http.Handler {
@@ -75,6 +79,9 @@ func (a *API) routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/lock", a.withSession(a.lock))
 	mux.HandleFunc("POST /api/auth/logout", a.withSession(a.logout))
 	mux.HandleFunc("POST /api/auth/password", a.withSession(a.changePassword))
+	mux.HandleFunc("GET /api/auth/config", a.authConfig)
+	mux.HandleFunc("POST /api/auth/google", a.googleSignIn)
+	mux.HandleFunc("POST /api/auth/google/link", a.withSession(a.linkGoogle))
 	mux.HandleFunc("GET /api/slips/{id}/image", a.slipImage) // signed link instead of a session
 
 	// Everything below needs a signed-in, PIN-unlocked session and only sees that user's data.

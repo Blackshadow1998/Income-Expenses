@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { downloadCsv } from '@/api';
+import { api, downloadCsv } from '@/api';
 import { useAuth } from '@/auth';
+import { GoogleButton } from '@/components/GoogleButton';
 import { PressScale } from '@/components/motion';
 import { Button, Card } from '@/components/ui';
-import { COLORS, confirmAsync, currentMonth, setThemePref, showError, THEME_PREF, ThemePref } from '@/format';
+import { COLORS, confirmAsync, currentMonth, setThemePref, showError, showInfo, THEME_PREF, ThemePref } from '@/format';
 
 const EXPORTS: { label: string; range: () => [string, string] }[] = [
   { label: 'เดือนนี้', range: () => [`${currentMonth()}-01`, ''] },
@@ -90,6 +91,17 @@ export default function SettingsScreen() {
         <Button title="🔒 ล็อกตอนนี้" variant="outline" onPress={lockNow} />
         <Button title="เปลี่ยน PIN" variant="outline" onPress={() => router.push('/change-pin')} />
         <Button title="เปลี่ยนรหัสผ่าน" variant="outline" onPress={() => router.push('/change-password')} />
+        <GoogleButton
+          text="continue_with"
+          onCredential={async (credential) => {
+            try {
+              await api.auth.linkGoogle(credential);
+              showInfo('เชื่อมบัญชี Google แล้ว', 'ครั้งต่อไปกด "ลงชื่อเข้าใช้ด้วย Google" ที่หน้าเข้าสู่ระบบได้เลย');
+            } catch (e) {
+              showError(e);
+            }
+          }}
+        />
       </Card>
 
       <Button title="ออกจากระบบ" variant="danger" onPress={onSignOut} />

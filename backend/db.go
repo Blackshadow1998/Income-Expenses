@@ -125,6 +125,17 @@ CREATE TABLE IF NOT EXISTS sessions (
 	created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- One-time codes for "forgot password", e-mailed to users.email. Only the hash is stored.
+CREATE TABLE IF NOT EXISTS password_resets (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	code_hash  TEXT    NOT NULL,
+	expires_at INTEGER NOT NULL,                  -- unix seconds
+	attempts   INTEGER NOT NULL DEFAULT 0,
+	used       INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL                   -- unix seconds
+);
+
 -- Money moved between two of a user's own accounts: changes both balances, the total stays
 -- the same, and it is neither income nor expense.
 CREATE TABLE IF NOT EXISTS transfers (
@@ -239,6 +250,21 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 	if err := addColumnIfMissing(db, "transactions", "recurring_id", "INTEGER REFERENCES recurring(id) ON DELETE SET NULL"); err != nil {
+		return err
+	}
+	// Forgot password: e-mail to send codes to, a temporary password valid for a day, and sessions
+	// signed in with it must change the password first.
+	for _, c := range []struct{ table, column, def string }{
+		{"users", "email", "TEXT NOT NULL DEFAULT ''"},
+		{"identities", "temp_hash", "TEXT NOT NULL DEFAULT ''"},
+		{"identities", "temp_expires", "INTEGER NOT NULL DEFAULT 0"},
+		{"sessions", "must_change_password", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := addColumnIfMissing(db, c.table, c.column, c.def); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email <> ''`); err != nil {
 		return err
 	}
 	if err := upgradeSlips(db); err != nil {

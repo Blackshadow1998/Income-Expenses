@@ -10,6 +10,12 @@ services:
     environment:
       BACKUP_DIR: /app/backups # daily copy of the DB, newest 30 kept
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-} # set in .env (repo root) to turn on Google sign-in
+      # "Forgot password" e-mails; set in .env (Gmail: an app password, not the account password).
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     volumes:
       - income_expenses_data:/app/data
       # Daily DB copies + slip images on the PC's disk, outside the Docker volume. Set BACKUP_HOST_DIR in

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ApiError } from '../api';
 import { useAuth } from '../auth';
 import { COLORS } from '../format';
 import { PinPad } from './PinPad';
-import { ErrorBox, Loading } from './ui';
+import { Button, Card, ErrorBox, Loading } from './ui';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -26,6 +26,59 @@ export function OfflineScreen() {
 }
 
 export { SignInScreen } from './SignInScreen';
+
+/** After signing in with a temporary password: a new password must be set before anything else. */
+export function NewPasswordScreen() {
+  const { tempPassword, replaceTempPassword, signOut } = useAuth();
+  const [current, setCurrent] = useState(tempPassword);
+  const [next, setNext] = useState('');
+  const [next2, setNext2] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setError(null);
+    if (next.length < 8) return setError('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
+    if (next !== next2) return setError('รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');
+    if (next === current) return setError('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสสำรอง');
+    setBusy(true);
+    try {
+      await replaceTempPassword(current, next);
+    } catch (e) {
+      setError(errorText(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.newPassword}>
+      <Text style={{ fontSize: 40, textAlign: 'center' }}>🔑</Text>
+      <Text style={styles.title}>ตั้งรหัสผ่านใหม่</Text>
+      <Text style={styles.sub}>คุณเข้าสู่ระบบด้วยรหัสผ่านสำรอง ต้องตั้งรหัสผ่านใหม่ก่อนใช้งาน</Text>
+      <Card style={{ gap: 10 }}>
+        {!tempPassword && <PasswordInput placeholder="รหัสผ่านสำรอง" value={current} onChangeText={setCurrent} />}
+        <PasswordInput placeholder="รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)" value={next} onChangeText={setNext} />
+        <PasswordInput placeholder="ยืนยันรหัสผ่านใหม่" value={next2} onChangeText={setNext2} onSubmitEditing={save} />
+        {!!error && <Text style={{ color: COLORS.out }}>{error}</Text>}
+        <Button title={busy ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'} onPress={save} disabled={busy} />
+      </Card>
+      <FooterLink title="ออกจากระบบ" onPress={signOut} />
+    </View>
+  );
+}
+
+function PasswordInput(props: { placeholder: string; value: string; onChangeText: (v: string) => void; onSubmitEditing?: () => void }) {
+  return (
+    <TextInput
+      {...props}
+      secureTextEntry
+      autoCapitalize="none"
+      autoCorrect={false}
+      placeholderTextColor={COLORS.muted}
+      style={styles.input}
+    />
+  );
+}
 
 /** Choose the PIN: after sign-up, or after signing in from "forgot PIN". Shown over the app. */
 export function PinSetupScreen() {
@@ -119,4 +172,17 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', backgroundColor: COLORS.bg },
   overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: COLORS.bg, zIndex: 1000 },
   link: { color: COLORS.primary, textAlign: 'center', fontWeight: '600' },
+  newPassword: { gap: 12, padding: 24, width: '100%', maxWidth: 400, alignSelf: 'center' },
+  title: { fontSize: 20, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
+  sub: { color: COLORS.muted, textAlign: 'center' },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: COLORS.text,
+    backgroundColor: COLORS.input,
+  },
 });

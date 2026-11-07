@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -79,7 +80,7 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request, s *session)
 		badRequest(w, "invalid JSON body")
 		return
 	}
-	if s.pinHash == "" {
+	if s.pinHash == "" && !s.mustChange {
 		authError(w, http.StatusForbidden, "pin_required", "กรุณาตั้ง PIN ก่อนใช้งาน")
 		return
 	}
@@ -90,9 +91,11 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request, s *session)
 		badRequest(w, "รหัสผ่านใหม่ต้องยาว 8–72 ตัวอักษร")
 		return
 	}
-	var hash string
+	var hash, tempHash string
+	var tempExpires int64
 	err := a.db.QueryRowContext(r.Context(),
-		`SELECT secret_hash FROM identities WHERE user_id = ? AND provider = 'password'`, s.userID).Scan(&hash)
+		`SELECT secret_hash, temp_hash, temp_expires FROM identities WHERE user_id = ? AND provider = 'password'`,
+		s.userID).Scan(&hash, &tempHash, &tempExpires)
 	if errors.Is(err, sql.ErrNoRows) {
 		badRequest(w, "บัญชีนี้ไม่ได้ใช้รหัสผ่านในการเข้าสู่ระบบ")
 		return
@@ -101,7 +104,10 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request, s *session)
 		serverError(w, err)
 		return
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Current)) != nil {
+	// The current password, or a still-valid temporary one from "forgot password".
+	currentOK := bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Current)) == nil ||
+		(tempHash != "" && tempExpires > time.Now().Unix() && bcrypt.CompareHashAndPassword([]byte(tempHash), []byte(in.Current)) == nil)
+	if !currentOK {
 		authError(w, http.StatusUnauthorized, "bad_credentials", "รหัสผ่านปัจจุบันไม่ถูกต้อง")
 		return
 	}
@@ -110,8 +116,14 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request, s *session)
 		serverError(w, err)
 		return
 	}
+	if _, err := a.db.ExecContext(r.Context(), `
+		UPDATE identities SET secret_hash = ?, temp_hash = '', temp_expires = 0
+		WHERE user_id = ? AND provider = 'password'`, string(newHash), s.userID); err != nil {
+		serverError(w, err)
+		return
+	}
 	if _, err := a.db.ExecContext(r.Context(),
-		`UPDATE identities SET secret_hash = ? WHERE user_id = ? AND provider = 'password'`, string(newHash), s.userID); err != nil {
+		`UPDATE sessions SET must_change_password = 0 WHERE token_hash = ?`, s.tokenHash); err != nil {
 		serverError(w, err)
 		return
 	}

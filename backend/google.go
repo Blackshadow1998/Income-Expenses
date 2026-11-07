@@ -104,6 +104,11 @@ func (a *API) googleSignIn(w http.ResponseWriter, r *http.Request) {
 			_, err = tx.ExecContext(r.Context(),
 				`INSERT INTO identities (user_id, provider, subject) VALUES (?, 'google', ?)`, uid, c.Sub)
 		}
+		if err == nil { // Google already verified this address; keep it for "forgot password" unless taken.
+			_, err = tx.ExecContext(r.Context(),
+				`UPDATE users SET email = ?1 WHERE id = ?2 AND NOT EXISTS (SELECT 1 FROM users WHERE email = ?1)`,
+				normalizeEmail(c.Email), uid)
+		}
 		if err == nil {
 			err = tx.Commit()
 		}
@@ -111,14 +116,14 @@ func (a *API) googleSignIn(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		a.startSession(w, r, uid, http.StatusCreated)
+		a.startSession(w, r, uid, http.StatusCreated, false)
 		return
 	}
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	a.startSession(w, r, uid, http.StatusOK)
+	a.startSession(w, r, uid, http.StatusOK, false)
 }
 
 // linkGoogle adds Google sign-in to the signed-in (unlocked) user.

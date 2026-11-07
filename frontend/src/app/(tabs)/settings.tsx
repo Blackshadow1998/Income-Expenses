@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, downloadCsv } from '@/api';
 import { useAuth } from '@/auth';
 import { GoogleButton } from '@/components/GoogleButton';
@@ -20,6 +21,70 @@ const exportCsv = async ([from, to]: [string, string]) => {
     showError(e);
   }
 };
+
+/** E-mail that "forgot password" codes are sent to; changing it needs the current password. */
+function RecoveryEmail() {
+  const { user, refreshUser } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.auth.setEmail(email.trim(), password);
+      await refreshUser();
+      setEditing(false);
+      setPassword('');
+      showInfo('บันทึกอีเมลแล้ว', 'ถ้าลืมรหัสผ่าน รหัสยืนยันจะถูกส่งไปที่อีเมลนี้');
+    } catch (e) {
+      showError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card style={{ gap: 10 }}>
+      <Text style={styles.h2}>✉️ อีเมลสำหรับกู้รหัสผ่าน</Text>
+      {user?.email ? (
+        <Text style={{ color: COLORS.text }}>{user.email}</Text>
+      ) : (
+        <Text style={{ color: COLORS.out }}>ยังไม่ได้ตั้งอีเมล — ถ้าลืมรหัสผ่านจะขอรหัสยืนยันไม่ได้</Text>
+      )}
+      {editing ? (
+        <>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            placeholderTextColor={COLORS.muted}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            style={styles.input}
+          />
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="รหัสผ่านปัจจุบัน (ยืนยันว่าเป็นคุณ)"
+            placeholderTextColor={COLORS.muted}
+            secureTextEntry
+            autoCapitalize="none"
+            onSubmitEditing={save}
+            style={styles.input}
+          />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => setEditing(false)} />
+            <Button title={busy ? 'กำลังบันทึก...' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={busy} />
+          </View>
+        </>
+      ) : (
+        <Button title={user?.email ? 'เปลี่ยนอีเมล' : 'ตั้งอีเมล'} variant="outline" onPress={() => setEditing(true)} />
+      )}
+    </Card>
+  );
+}
 
 const THEMES: { key: ThemePref; label: string }[] = [
   { key: 'system', label: '📱 ตามเครื่อง' },
@@ -83,6 +148,8 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
+      <RecoveryEmail />
+
       <Card style={{ gap: 10 }}>
         <Text style={styles.h2}>ความปลอดภัย</Text>
         <Text style={{ color: COLORS.muted, fontSize: 13 }}>
@@ -127,4 +194,14 @@ const styles = StyleSheet.create({
   segBtn: { paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
   segBtnActive: { backgroundColor: COLORS.card, boxShadow: '0px 2px 6px rgba(30, 27, 75, 0.15)' },
   segText: { fontWeight: '700', color: COLORS.muted, fontSize: 13 },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: COLORS.text,
+    backgroundColor: COLORS.input,
+  },
 });

@@ -93,12 +93,14 @@ export interface User {
   id: number;
   name: string;
   username: string;
+  email: string; // where "forgot password" codes go; '' when not set
   has_pin: boolean;
 }
 
 export interface SignInResult {
   token: string;
   user: User;
+  must_change_password: boolean; // signed in with a temporary password
 }
 
 export interface SlipUploadResult {
@@ -236,7 +238,7 @@ export class ApiError extends Error {
 }
 
 /** Auth problems the sign-in gate (auth.tsx) reacts to. */
-export type AuthProblem = 'unauthenticated' | 'pin_required' | 'locked';
+export type AuthProblem = 'unauthenticated' | 'pin_required' | 'locked' | 'password_change_required';
 
 let token: string | null = null;
 let onAuthProblem: ((p: AuthProblem) => void) | null = null;
@@ -280,7 +282,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       msg = body.error ?? msg;
       code = body.code;
     } catch {}
-    if (code === 'locked' || code === 'pin_required') {
+    if (code === 'locked' || code === 'pin_required' || code === 'password_change_required') {
       onAuthProblem?.(code);
       await new Promise<void>((resolve, reject) => waiting.push({ resolve, reject }));
       return request<T>(path, init);
@@ -318,10 +320,16 @@ const post = (body?: unknown): RequestInit => ({ method: 'POST', body: body === 
 
 export const api = {
   auth: {
-    signup: (body: { name: string; username: string; password: string }) =>
+    signup: (body: { name: string; email: string; username: string; password: string }) =>
       request<SignInResult>('/auth/signup', post(body)),
     login: (body: { username: string; password: string }) => request<SignInResult>('/auth/login', post(body)),
-    me: () => request<{ user: User; locked: boolean }>('/auth/me'),
+    me: () => request<{ user: User; locked: boolean; must_change_password: boolean }>('/auth/me'),
+    /** Same answer whether or not the e-mail has an account. */
+    forgot: (email: string) => request<{ message: string; expires_in: number }>('/auth/forgot', post({ email })),
+    verifyForgot: (email: string, code: string) =>
+      request<{ username: string; temp_password: string; expires_at: string }>('/auth/forgot/verify', post({ email, code })),
+    setEmail: (email: string, currentPassword: string) =>
+      request<void>('/auth/email', { method: 'PUT', body: JSON.stringify({ email, current_password: currentPassword }) }),
     unlock: (pin: string) => request<void>('/auth/unlock', post({ pin })),
     /** First PIN, a reset right after a password sign-in (no currentPin), or a change. */
     setPin: (pin: string, currentPin?: string) => request<void>('/auth/pin', post({ pin, current_pin: currentPin ?? '' })),

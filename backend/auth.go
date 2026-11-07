@@ -42,6 +42,7 @@ type User struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
 	Username string `json:"username"`
+	Email    string `json:"email"` // for "forgot password"; '' when not set
 	HasPIN   bool   `json:"has_pin"`
 }
 
@@ -52,6 +53,7 @@ type session struct {
 	createdAt     int64 // unix seconds, i.e. when the password was last entered
 	pinFailures   int
 	pinHash       string // the user's PIN; empty until it is set
+	mustChange    bool   // signed in with a temporary password: only changing the password is allowed
 }
 
 type sessionHandler func(http.ResponseWriter, *http.Request, *session)
@@ -83,10 +85,11 @@ func (a *API) loadSession(r *http.Request) (*session, error) {
 	}
 	s := &session{tokenHash: hashToken(token)}
 	err := a.db.QueryRowContext(r.Context(), `
-		SELECT s.user_id, s.unlocked_until, CAST(strftime('%s', s.created_at) AS INTEGER), s.pin_failures, u.pin_hash
+		SELECT s.user_id, s.unlocked_until, CAST(strftime('%s', s.created_at) AS INTEGER), s.pin_failures, u.pin_hash,
+		       s.must_change_password
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.expires_at > ?`, s.tokenHash, time.Now().Unix(),
-	).Scan(&s.userID, &s.unlockedUntil, &s.createdAt, &s.pinFailures, &s.pinHash)
+	).Scan(&s.userID, &s.unlockedUntil, &s.createdAt, &s.pinFailures, &s.pinHash, &s.mustChange)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -112,6 +115,10 @@ func (a *API) withSession(h sessionHandler) http.HandlerFunc {
 // requireUnlocked guards the money data: a valid session unlocked with the PIN within unlockTTL.
 func (a *API) requireUnlocked(h http.HandlerFunc) http.HandlerFunc {
 	return a.withSession(func(w http.ResponseWriter, r *http.Request, s *session) {
+		if s.mustChange {
+			authError(w, http.StatusForbidden, "password_change_required", "กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน")
+			return
+		}
 		if s.pinHash == "" {
 			authError(w, http.StatusForbidden, "pin_required", "กรุณาตั้ง PIN ก่อนใช้งาน")
 			return
@@ -145,7 +152,8 @@ func (a *API) markUnlocked(ctx context.Context, s *session, now time.Time) error
 }
 
 type credentials struct {
-	Name     string `json:"name"` // display name, sign-up only
+	Name     string `json:"name"`  // display name, sign-up only
+	Email    string `json:"email"` // sign-up only: where "forgot password" codes go
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -158,6 +166,7 @@ func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, boo
 	}
 	in.Username = strings.ToLower(strings.TrimSpace(in.Username))
 	in.Name = strings.TrimSpace(in.Name)
+	in.Email = normalizeEmail(in.Email)
 	return in, true
 }
 
@@ -179,6 +188,10 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 	}
 	if len([]rune(in.Name)) > 50 {
 		badRequest(w, "ชื่อที่แสดงยาวเกิน 50 ตัวอักษร")
+		return
+	}
+	if in.Email != "" && !emailRe.MatchString(in.Email) {
+		badRequest(w, "รูปแบบอีเมลไม่ถูกต้อง")
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
@@ -215,11 +228,20 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	_, err = tx.ExecContext(r.Context(), `UPDATE users SET email = ? WHERE id = ?`, in.Email, uid)
+	if isUniqueViolation(err) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "อีเมลนี้มีบัญชีอื่นใช้อยู่แล้ว"})
+		return
+	}
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		serverError(w, err)
 		return
 	}
-	a.startSession(w, r, uid, http.StatusCreated)
+	a.startSession(w, r, uid, http.StatusCreated, false)
 }
 
 // newUser creates a user (any sign-in method). The first user takes over the data recorded before
@@ -258,13 +280,13 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var identityID, uid, lockedUntil int64
-	var hash string
+	var identityID, uid, lockedUntil, tempExpires int64
+	var hash, tempHash string
 	var failed int
 	err := a.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, secret_hash, failed_logins, locked_until
+		SELECT id, user_id, secret_hash, failed_logins, locked_until, temp_hash, temp_expires
 		FROM identities WHERE provider = 'password' AND subject = ?`, in.Username,
-	).Scan(&identityID, &uid, &hash, &failed, &lockedUntil)
+	).Scan(&identityID, &uid, &hash, &failed, &lockedUntil, &tempHash, &tempExpires)
 	if errors.Is(err, sql.ErrNoRows) {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(in.Password))
 		authError(w, http.StatusUnauthorized, "bad_credentials", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
@@ -282,7 +304,14 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
+	// A temporary password from "forgot password" works until it expires, and only to set a new one.
+	usedTemp := false
+	ok = bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) == nil
+	if !ok && tempHash != "" && tempExpires > now.Unix() {
+		ok = bcrypt.CompareHashAndPassword([]byte(tempHash), []byte(in.Password)) == nil
+		usedTemp = ok
+	}
+	if !ok {
 		failed++
 		var until int64
 		if failed >= maxLoginTries {
@@ -301,11 +330,12 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	a.startSession(w, r, uid, http.StatusOK)
+	a.startSession(w, r, uid, http.StatusOK, usedTemp)
 }
 
 // startSession issues a new bearer token (only its hash is stored) that starts out unlocked.
-func (a *API) startSession(w http.ResponseWriter, r *http.Request, uid int64, status int) {
+// mustChange limits it to changing the password (signed in with a temporary password).
+func (a *API) startSession(w http.ResponseWriter, r *http.Request, uid int64, status int, mustChange bool) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		serverError(w, err)
@@ -318,8 +348,8 @@ func (a *API) startSession(w http.ResponseWriter, r *http.Request, uid int64, st
 		return
 	}
 	if _, err := a.db.ExecContext(r.Context(),
-		`INSERT INTO sessions (token_hash, user_id, expires_at, unlocked_until) VALUES (?, ?, ?, ?)`,
-		hashToken(token), uid, now.Add(sessionTTL).Unix(), now.Add(unlockTTL).Unix()); err != nil {
+		`INSERT INTO sessions (token_hash, user_id, expires_at, unlocked_until, must_change_password) VALUES (?, ?, ?, ?, ?)`,
+		hashToken(token), uid, now.Add(sessionTTL).Unix(), now.Add(unlockTTL).Unix(), mustChange); err != nil {
 		serverError(w, err)
 		return
 	}
@@ -328,15 +358,15 @@ func (a *API) startSession(w http.ResponseWriter, r *http.Request, uid int64, st
 		serverError(w, err)
 		return
 	}
-	writeJSON(w, status, map[string]any{"token": token, "user": u})
+	writeJSON(w, status, map[string]any{"token": token, "user": u, "must_change_password": mustChange})
 }
 
 func (a *API) fetchUser(ctx context.Context, id int64) (User, error) {
 	var u User
 	err := a.db.QueryRowContext(ctx, `
-		SELECT u.id, u.name, COALESCE(i.subject, ''), u.pin_hash <> ''
+		SELECT u.id, u.name, COALESCE(i.subject, ''), u.email, u.pin_hash <> ''
 		FROM users u LEFT JOIN identities i ON i.user_id = u.id AND i.provider = 'password'
-		WHERE u.id = ?`, id).Scan(&u.ID, &u.Name, &u.Username, &u.HasPIN)
+		WHERE u.id = ?`, id).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.HasPIN)
 	return u, err
 }
 
@@ -346,7 +376,11 @@ func (a *API) me(w http.ResponseWriter, r *http.Request, s *session) {
 		serverError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": u, "locked": time.Now().Unix() >= s.unlockedUntil})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":                 u,
+		"locked":               time.Now().Unix() >= s.unlockedUntil,
+		"must_change_password": s.mustChange,
+	})
 }
 
 type pinInput struct {

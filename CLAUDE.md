@@ -50,6 +50,10 @@ cd frontend && npx expo start --web --port 8081                                #
   Data routes go through `requireUnlocked` (session + PIN unlocked within 5 min). The first user to sign up takes over rows with `user_id NULL`.
 - Sign-in methods live in `identities` (`provider`, `subject`) so Google sign-in can be added later without touching `users`.
 - Slip images are served via signed short-lived links (`image_url`), not the session token.
+- Forgot password (`forgot.go`, `mail.go`): e-mail OTP (3 min, single use, 5 tries, 60 s resend, 5/hour) →
+  temporary password (24 h) → that session is `must_change_password` until a new one is set. Answers never
+  reveal whether an e-mail has an account. SMTP comes from `.env`; tests use `mailbox` (forgot_test.go).
+- Never commit real slip text, names, account numbers or refs as test fixtures — anonymise them.
 
 ## Branches
 

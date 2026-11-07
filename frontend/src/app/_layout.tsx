@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Platform, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/auth';
 import {
-  LoadingScreen, OfflineScreen, Overlay, PinLockScreen, PinSetupScreen, SignInScreen,
+  LoadingScreen, NewPasswordScreen, OfflineScreen, Overlay, PinLockScreen, PinSetupScreen, SignInScreen,
 } from '@/components/AuthScreens';
 import { COLORS, IS_DARK } from '@/format';
 
@@ -65,6 +65,11 @@ function Gate() {
         <Stack.Screen name="debts" options={{ title: 'หนี้ ให้ยืม / กู้' }} />
         <Stack.Screen name="search" options={{ title: 'ค้นหารายการ' }} />
       </Stack>
+      {status === 'needsPassword' && (
+        <Overlay>
+          <NewPasswordScreen />
+        </Overlay>
+      )}
       {status === 'needsPin' && (
         <Overlay>
           <PinSetupScreen />

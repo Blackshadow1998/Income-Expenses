@@ -4,14 +4,15 @@ import {
   ActivityIndicator, Animated, KeyboardAvoidingView, LayoutChangeEvent, LayoutRectangle, Platform, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import { api } from '../api';
 import { useAuth } from '../auth';
-import { showInfo } from '../format';
 import { Firefly, Point } from './Firefly';
 import { GoogleButton } from './GoogleButton';
 import { FadeIn, PressScale, Shake, ShakeHandle } from './motion';
 
-type Mode = 'login' | 'signup';
-type FieldKey = 'name' | 'username' | 'password' | 'password2';
+type Mode = 'login' | 'signup' | 'forgot';
+type FieldKey = 'name' | 'email' | 'username' | 'password' | 'password2';
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 const NIGHT = ['#070b1f', '#1e1b4b', '#3b0764'] as const;
 const GOLD = '#facc15';
@@ -25,7 +26,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function SignInScreen() {
   const { signIn, signUp, signInWithGoogle } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
-  const [values, setValues] = useState<Record<FieldKey, string>>({ name: '', username: '', password: '', password2: '' });
+  const [values, setValues] = useState<Record<FieldKey, string>>({ name: '', email: '', username: '', password: '', password2: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [focus, setFocus] = useState<FieldKey | null>(null);
   const [eyeVisit, setEyeVisit] = useState<FieldKey | null>(null);
@@ -70,10 +71,11 @@ export function SignInScreen() {
       shaker.current?.shake();
     };
     if (!values.username.trim() || !values.password) return fail('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
+    if (signup && !EMAIL_RE.test(values.email.trim())) return fail('กรุณากรอกอีเมลให้ถูกต้อง (ใช้ตอนลืมรหัสผ่าน)');
     if (signup && values.password !== values.password2) return fail('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
     setBusy(true);
     try {
-      if (signup) await signUp(values.name, values.username, values.password);
+      if (signup) await signUp(values.name, values.email.trim(), values.username, values.password);
       else await signIn(values.username, values.password);
     } catch (e) {
       setBusy(false);
@@ -122,18 +124,29 @@ export function SignInScreen() {
       <Stars />
       <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
         <FadeIn style={{ alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 40 }}>💰</Text>
-          <Text style={styles.title}>{signup ? 'เริ่มจดรายรับรายจ่าย' : 'ยินดีต้อนรับกลับมา'}</Text>
-          <Text style={styles.subtitle}>{signup ? 'สมัครฟรี ใช้ได้ทันที' : 'เข้าสู่ระบบเพื่อดูยอดเงินของคุณ'}</Text>
+          <Text style={{ fontSize: 40 }}>{mode === 'forgot' ? '🔑' : '💰'}</Text>
+          <Text style={styles.title}>{HEADINGS[mode][0]}</Text>
+          <Text style={styles.subtitle}>{HEADINGS[mode][1]}</Text>
         </FadeIn>
 
         <FadeIn delay={120}>
           <Shake ref={shaker}>
             <View style={styles.card} onLayout={measure('form')}>
               <Firefly target={target} home={home} />
+              {mode === 'forgot' ? (
+                <ForgotPassword
+                  onBack={() => switchMode('login')}
+                  onDone={(username, temp) => {
+                    setValues((s) => ({ ...s, username, password: temp }));
+                    switchMode('login');
+                  }}
+                />
+              ) : (
+              <>
               <Segment mode={mode} onChange={switchMode} />
 
               {signup && field('name', 'ชื่อที่แสดง', '😊', { hint: 'เช่น เอก', auto: 'name', appear: true })}
+              {signup && field('email', 'อีเมล (ใช้ตอนลืมรหัสผ่าน)', '✉️', { hint: 'you@example.com', auto: 'email', appear: true })}
               {field('username', 'ชื่อผู้ใช้', '👤', { hint: signup ? 'a-z 0-9 . _ - อย่างน้อย 3 ตัว' : undefined, auto: 'username' })}
               {field('password', 'รหัสผ่าน', '🔒', {
                 secret: true,
@@ -142,18 +155,6 @@ export function SignInScreen() {
                 last: !signup,
               })}
               {signup && field('password2', 'ยืนยันรหัสผ่าน', '🔁', { secret: true, auto: 'new-password', last: true, appear: true })}
-
-              {!signup && (
-                <Pressable
-                  onPress={() =>
-                    showInfo('ลืมรหัสผ่าน', 'ให้ผู้ดูแลเครื่องออกรหัสชั่วคราวให้ (คำสั่ง reset-password) แล้วเข้าสู่ระบบและเปลี่ยนรหัสที่หน้า ตั้งค่า')
-                  }
-                  style={{ alignSelf: 'flex-end' }}
-                  hitSlop={8}
-                >
-                  <Text style={styles.link}>ลืมรหัสผ่าน?</Text>
-                </Pressable>
-              )}
 
               {!!error && (
                 <FadeIn key={error} from={-6}>
@@ -181,12 +182,11 @@ export function SignInScreen() {
                   }
                 }}
               />
-              <Pressable onPress={() => switchMode(signup ? 'login' : 'signup')} hitSlop={8}>
-                <Text style={styles.switch}>
-                  {signup ? 'มีบัญชีอยู่แล้ว? ' : 'ยังไม่มีบัญชี? '}
-                  <Text style={styles.link}>{signup ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}</Text>
-                </Text>
+              <Pressable onPress={() => switchMode('forgot')} hitSlop={8}>
+                <Text style={[styles.link, { textAlign: 'center' }]}>ลืมรหัสผ่าน?</Text>
               </Pressable>
+              </>
+              )}
             </View>
           </Shake>
         </FadeIn>
@@ -196,7 +196,170 @@ export function SignInScreen() {
   );
 }
 
-type AutoComplete = 'name' | 'username' | 'current-password' | 'new-password';
+const HEADINGS: Record<Mode, [string, string]> = {
+  login: ['ยินดีต้อนรับกลับมา', 'เข้าสู่ระบบเพื่อดูยอดเงินของคุณ'],
+  signup: ['เริ่มจดรายรับรายจ่าย', 'สมัครฟรี ใช้ได้ทันที'],
+  forgot: ['ลืมรหัสผ่าน', 'รับรหัสยืนยันทางอีเมลที่ใช้สมัคร'],
+};
+
+const mmss = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+/**
+ * E-mail → 6-digit code (3 minutes) → temporary password (24 hours). The server answers the same
+ * for unknown addresses, so this screen never says whether an e-mail has an account.
+ */
+function ForgotPassword({ onBack, onDone }: { onBack: () => void; onDone: (username: string, temp: string) => void }) {
+  const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [focus, setFocus] = useState<'email' | 'code' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [deadline, setDeadline] = useState(0);
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [result, setResult] = useState<{ username: string; temp_password: string; expires_at: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (step !== 'code') return;
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [step]);
+
+  const send = async () => {
+    if (busy) return;
+    setError(null);
+    if (!EMAIL_RE.test(email.trim())) return setError('กรุณากรอกอีเมลให้ถูกต้อง');
+    setBusy(true);
+    try {
+      const r = await api.auth.forgot(email.trim());
+      const t = Date.now();
+      setMessage(r.message);
+      setDeadline(t + r.expires_in * 1000);
+      setResendAt(t + 60_000);
+      setNow(t);
+      setCode('');
+      setStep('code');
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verify = async () => {
+    if (busy) return;
+    setError(null);
+    if (!/^\d{6}$/.test(code)) return setError('กรุณากรอกรหัส 6 หลัก');
+    if (now > deadline) return setError('รหัสหมดอายุแล้ว กรุณาขอรหัสใหม่');
+    setBusy(true);
+    try {
+      setResult(await api.auth.verifyForgot(email.trim(), code));
+      setStep('done');
+    } catch (e) {
+      setError(errorText(e));
+      setCode('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (Platform.OS === 'web' && result) {
+      await navigator.clipboard?.writeText(result.temp_password).catch(() => {});
+      setCopied(true);
+    }
+  };
+
+  const errorLine = !!error && (
+    <FadeIn key={error} from={-6}>
+      <Text style={styles.error}>⚠️ {error}</Text>
+    </FadeIn>
+  );
+
+  if (step === 'done' && result) {
+    const until = new Date(result.expires_at);
+    return (
+      <FadeIn style={{ gap: 14 }}>
+        <Text style={styles.forgotText}>รหัสผ่านสำรองของ</Text>
+        <Text style={styles.username}>@{result.username}</Text>
+        <Pressable onPress={copy} style={styles.tempBox} accessibilityLabel="คัดลอกรหัสผ่านสำรอง">
+          <Text selectable style={styles.tempText}>{result.temp_password}</Text>
+          {Platform.OS === 'web' && <Text style={styles.tempHint}>{copied ? '✓ คัดลอกแล้ว' : 'แตะเพื่อคัดลอก'}</Text>}
+        </Pressable>
+        <Text style={styles.forgotText}>
+          ใช้ได้ถึง {until.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} (24 ชั่วโมง){'\n'}
+          เข้าสู่ระบบด้วยรหัสนี้แล้วต้องตั้งรหัสผ่านใหม่ทันที หลังจากนั้นรหัสสำรองจะใช้ไม่ได้
+        </Text>
+        <SubmitButton title="เข้าสู่ระบบด้วยรหัสสำรอง" busy={false} onPress={() => onDone(result.username, result.temp_password)} />
+      </FadeIn>
+    );
+  }
+
+  return (
+    <View style={{ gap: 14 }}>
+      {step === 'email' ? (
+        <>
+          <Text style={styles.forgotText}>กรอกอีเมลที่ใช้สมัคร เราจะส่งรหัสยืนยัน 6 หลักไปให้ (ใช้ได้ 3 นาที)</Text>
+          <AuthField
+            label="อีเมล"
+            icon="✉️"
+            hint="you@example.com"
+            value={email}
+            onChangeText={setEmail}
+            eyeOpen={false}
+            focused={focus === 'email'}
+            onFocus={() => setFocus('email')}
+            onBlur={() => setFocus(null)}
+            autoComplete="email"
+            onSubmitEditing={send}
+          />
+          {errorLine}
+          <SubmitButton title="ส่งรหัสยืนยัน" busy={busy} onPress={send} />
+        </>
+      ) : (
+        <>
+          <Text style={styles.forgotText}>{message}</Text>
+          <Text style={styles.forgotText}>
+            อีเมล: <Text style={{ color: '#fff', fontWeight: '700' }}>{email.trim()}</Text>
+          </Text>
+          <AuthField
+            label="รหัสยืนยัน 6 หลัก"
+            icon="🔢"
+            value={code}
+            onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
+            eyeOpen={false}
+            focused={focus === 'code'}
+            onFocus={() => setFocus('code')}
+            onBlur={() => setFocus(null)}
+            autoComplete="one-time-code"
+            onSubmitEditing={verify}
+          />
+          <Text style={[styles.forgotText, now > deadline && { color: '#fca5a5' }]}>
+            {now > deadline ? 'รหัสหมดอายุแล้ว — กดขอรหัสใหม่' : `รหัสหมดอายุใน ${mmss(deadline - now)}`}
+          </Text>
+          {errorLine}
+          <SubmitButton title="ยืนยันรหัส" busy={busy} onPress={verify} />
+          <Pressable onPress={send} disabled={now < resendAt || busy} hitSlop={8}>
+            <Text style={[styles.link, { textAlign: 'center' }, now < resendAt && { opacity: 0.45 }]}>
+              {now < resendAt ? `ขอรหัสใหม่ได้ใน ${mmss(resendAt - now)}` : 'ขอรหัสใหม่'}
+            </Text>
+          </Pressable>
+        </>
+      )}
+      <Pressable onPress={onBack} hitSlop={8}>
+        <Text style={styles.switch}>← กลับไปเข้าสู่ระบบ</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+type AutoComplete = 'name' | 'email' | 'username' | 'current-password' | 'new-password' | 'one-time-code';
 
 /** Input with an icon and a label that floats up when focused or filled. */
 function AuthField(props: {
@@ -246,6 +409,7 @@ function AuthField(props: {
         autoCapitalize="none"
         autoCorrect={false}
         autoComplete={props.autoComplete}
+        keyboardType={props.autoComplete === 'email' ? 'email-address' : props.autoComplete === 'one-time-code' ? 'number-pad' : 'default'}
         onSubmitEditing={props.onSubmitEditing}
         placeholder={props.focused ? props.hint : undefined}
         placeholderTextColor="rgba(226, 232, 240, 0.35)"
@@ -379,4 +543,18 @@ const styles = StyleSheet.create({
   dividerText: { color: 'rgba(226, 232, 240, 0.55)', fontSize: 12 },
   switch: { color: 'rgba(226, 232, 240, 0.8)', textAlign: 'center' },
   note: { color: 'rgba(226, 232, 240, 0.6)', textAlign: 'center', fontSize: 13 },
+  forgotText: { color: 'rgba(226, 232, 240, 0.8)', textAlign: 'center', lineHeight: 21 },
+  username: { color: '#fff', fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: -8 },
+  tempBox: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(250, 204, 21, 0.6)',
+    backgroundColor: 'rgba(250, 204, 21, 0.08)',
+  },
+  tempText: { color: '#fde68a', fontSize: 26, fontWeight: '800', letterSpacing: 2, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined },
+  tempHint: { color: 'rgba(226, 232, 240, 0.6)', fontSize: 12 },
 });

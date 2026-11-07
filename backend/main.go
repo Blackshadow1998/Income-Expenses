@@ -55,7 +55,7 @@ func main() {
 		logger.Fatalf("image key: %v", err)
 	}
 	api := &API{db: db, slipsDir: slipsDir, imageKey: imageKey,
-		googleClientID: os.Getenv("GOOGLE_CLIENT_ID"), verifyGoogle: verifyGoogleToken}
+		googleClientID: os.Getenv("GOOGLE_CLIENT_ID"), verifyGoogle: verifyGoogleToken, sendMail: newMailer()}
 	if dir := getenv("WEB_DIR", "./web"); fileExists(dir + "/index.html") {
 		api.webDir = dir
 		logger.Printf("serving web app from %s", dir)

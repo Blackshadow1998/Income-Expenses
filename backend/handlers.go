@@ -64,6 +64,7 @@ type API struct {
 
 	googleClientID string // Google sign-in is off when empty
 	verifyGoogle   func(ctx context.Context, clientID, idToken string) (googleClaims, error)
+	sendMail       func(to, subject, body string) error // nil when SMTP is not configured
 }
 
 func (a *API) routes() http.Handler {
@@ -79,6 +80,9 @@ func (a *API) routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/lock", a.withSession(a.lock))
 	mux.HandleFunc("POST /api/auth/logout", a.withSession(a.logout))
 	mux.HandleFunc("POST /api/auth/password", a.withSession(a.changePassword))
+	mux.HandleFunc("POST /api/auth/forgot", a.forgotPassword)
+	mux.HandleFunc("POST /api/auth/forgot/verify", a.verifyForgot)
+	mux.HandleFunc("PUT /api/auth/email", a.withSession(a.setEmail))
 	mux.HandleFunc("GET /api/auth/config", a.authConfig)
 	mux.HandleFunc("POST /api/auth/google", a.googleSignIn)
 	mux.HandleFunc("POST /api/auth/google/link", a.withSession(a.linkGoogle))

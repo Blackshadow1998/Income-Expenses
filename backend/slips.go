@@ -29,10 +29,14 @@ type Slip struct {
 	Ref           string  `json:"ref"`
 	BankID        *int64  `json:"bank_id"`
 	BankName      string  `json:"bank_name"`
+	ToBankID      *int64  `json:"to_bank_id"` // receiver's bank
+	ToBankName    string  `json:"to_bank_name"`
 	OCRText       string  `json:"ocr_text"`
 	Status        string  `json:"status"`
 	TransactionID *int64  `json:"transaction_id"`
 	ImageURL      string  `json:"image_url"` // signed path of the image, relative to the API root
+	// What the user's slip rules say to record; nil when no rule matches.
+	Suggestion *SlipSuggestion `json:"suggestion"`
 }
 
 type slipUploadResult struct {
@@ -44,21 +48,30 @@ type slipUploadResult struct {
 
 const selectSlip = `
 	SELECT sl.id, sl.slip_date, sl.date_found, sl.amount_satang, sl.from_name, sl.to_name, sl.ref,
-	       sl.bank_id, COALESCE(b.name, ''), sl.ocr_text, sl.status, sl.transaction_id
-	FROM slips sl LEFT JOIN banks b ON b.id = sl.bank_id`
+	       sl.bank_id, COALESCE(b.name, ''), sl.to_bank_id, COALESCE(tb.name, ''), sl.ocr_text, sl.status, sl.transaction_id
+	FROM slips sl LEFT JOIN banks b ON b.id = sl.bank_id LEFT JOIN banks tb ON tb.id = sl.to_bank_id`
 
 func (a *API) scanSlip(s scanner) (Slip, error) {
 	var sl Slip
 	var satang int64
 	err := s.Scan(&sl.ID, &sl.Date, &sl.DateFound, &satang, &sl.FromName, &sl.ToName, &sl.Ref,
-		&sl.BankID, &sl.BankName, &sl.OCRText, &sl.Status, &sl.TransactionID)
+		&sl.BankID, &sl.BankName, &sl.ToBankID, &sl.ToBankName, &sl.OCRText, &sl.Status, &sl.TransactionID)
 	sl.Amount = fromSatang(satang)
 	sl.ImageURL = a.slipImageURL(sl.ID)
 	return sl, err
 }
 
 func (a *API) fetchSlip(ctx context.Context, uid, id int64) (Slip, error) {
-	return a.scanSlip(a.db.QueryRowContext(ctx, selectSlip+` WHERE sl.id = ? AND sl.user_id = ?`, id, uid))
+	sl, err := a.scanSlip(a.db.QueryRowContext(ctx, selectSlip+` WHERE sl.id = ? AND sl.user_id = ?`, id, uid))
+	if err != nil {
+		return sl, err
+	}
+	rules, err := a.loadRules(ctx, uid)
+	if err != nil {
+		return sl, err
+	}
+	sl.Suggestion, err = a.suggest(ctx, rules, sl)
+	return sl, err
 }
 
 // pendingSlips lists slips waiting for confirmation whose date falls in [start, end).
@@ -78,7 +91,20 @@ func (a *API) pendingSlips(ctx context.Context, uid int64, start, end string) ([
 		}
 		out = append(out, sl)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	rules, err := a.loadRules(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].Suggestion, err = a.suggest(ctx, rules, out[i]); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // uploadSlips accepts one or more images (multipart field "files"), reads each with OCR
@@ -186,11 +212,18 @@ func (a *API) saveSlip(ctx context.Context, uid int64, name string, data []byte)
 			bankID = &id
 		}
 	}
+	var toBankID *int64
+	if parsed.ToBank != "" {
+		var id int64
+		if err := a.db.QueryRowContext(ctx, `SELECT id FROM banks WHERE name = ?`, parsed.ToBank).Scan(&id); err == nil {
+			toBankID = &id
+		}
+	}
 
 	ins, err := a.db.ExecContext(ctx, `
-		INSERT INTO slips (user_id, image_file, file_hash, slip_date, date_found, amount_satang, from_name, to_name, ref, bank_id, ocr_text)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		uid, fileName, hash, date, dateFound, toSatang(parsed.Amount), parsed.FromName, parsed.ToName, parsed.Ref, bankID, text)
+		INSERT INTO slips (user_id, image_file, file_hash, slip_date, date_found, amount_satang, from_name, to_name, ref, bank_id, to_bank_id, ocr_text)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uid, fileName, hash, date, dateFound, toSatang(parsed.Amount), parsed.FromName, parsed.ToName, parsed.Ref, bankID, toBankID, text)
 	if err != nil {
 		os.Remove(path)
 		logger.Printf("insert slip: %v", err)
@@ -288,10 +321,10 @@ func reparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
 		ref                  string
 		dateFound            bool
 		amount               int64
-		bankID               *int64
+		bankID, toBankID     *int64
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, ocr_text, slip_date, from_name, to_name, ref, date_found, amount_satang, bank_id
+		SELECT id, ocr_text, slip_date, from_name, to_name, ref, date_found, amount_satang, bank_id, to_bank_id
 		FROM slips WHERE status = 'pending' AND ocr_text <> ''`)
 	if err != nil {
 		return 0, err
@@ -299,7 +332,7 @@ func reparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
 	var list []slipRow
 	for rows.Next() {
 		var s slipRow
-		if err := rows.Scan(&s.id, &s.text, &s.date, &s.from, &s.to, &s.ref, &s.dateFound, &s.amount, &s.bankID); err != nil {
+		if err := rows.Scan(&s.id, &s.text, &s.date, &s.from, &s.to, &s.ref, &s.dateFound, &s.amount, &s.bankID, &s.toBankID); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -325,6 +358,12 @@ func reparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
 				*f.cur, changed = f.found, true
 			}
 		}
+		if s.toBankID == nil && p.ToBank != "" {
+			var id int64
+			if db.QueryRowContext(ctx, `SELECT id FROM banks WHERE name = ?`, p.ToBank).Scan(&id) == nil {
+				s.toBankID, changed = &id, true
+			}
+		}
 		if s.bankID == nil && p.Bank != "" {
 			var id int64
 			if db.QueryRowContext(ctx, `SELECT id FROM banks WHERE name = ?`, p.Bank).Scan(&id) == nil {
@@ -335,8 +374,8 @@ func reparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
 			continue
 		}
 		if _, err := db.ExecContext(ctx, `
-			UPDATE slips SET slip_date = ?, date_found = ?, amount_satang = ?, from_name = ?, to_name = ?, ref = ?, bank_id = ?
-			WHERE id = ?`, s.date, s.dateFound, s.amount, s.from, s.to, s.ref, s.bankID, s.id); err != nil {
+			UPDATE slips SET slip_date = ?, date_found = ?, amount_satang = ?, from_name = ?, to_name = ?, ref = ?, bank_id = ?, to_bank_id = ?
+			WHERE id = ?`, s.date, s.dateFound, s.amount, s.from, s.to, s.ref, s.bankID, s.toBankID, s.id); err != nil {
 			return updated, err
 		}
 		updated++

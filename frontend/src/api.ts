@@ -83,11 +83,53 @@ export interface Slip {
   ref: string;
   bank_id: number | null;
   bank_name: string;
+  to_bank_id: number | null; // receiver's bank, when the slip shows it
+  to_bank_name: string;
   ocr_text: string;
   status: 'pending' | 'confirmed';
   transaction_id: number | null;
   image_url: string; // signed, short-lived path of the slip image
+  suggestion: SlipSuggestion | null; // from the first slip rule that matches
 }
+
+/** What a matching slip rule fills into the confirm form (the user still confirms). */
+export interface SlipSuggestion {
+  rule_id: number;
+  rule_name: string;
+  action: 'transaction' | 'transfer';
+  category_id: number | null;
+  subcategory_id: number | null;
+  account_id: number | null;
+  to_account_id: number | null;
+  payee: string;
+  note: string;
+}
+
+/** "When a slip's receiver/sender looks like this, it's that." Checked top to bottom, first match wins. */
+export interface SlipRule {
+  id: number;
+  name: string;
+  match_kind: 'to' | 'from' | 'self'; // receiver contains / sender contains / sender and receiver are the same person
+  match_text: string;
+  bank_id: number | null; // also require the receiver's bank
+  bank_name: string;
+  action: 'transaction' | 'transfer';
+  category_id: number | null;
+  category_name: string;
+  subcategory_id: number | null;
+  subcategory_name: string;
+  account_id: number | null; // null = the account at the slip's bank
+  account_label: string;
+  to_account_id: number | null; // transfer only; null = the account at the receiver's bank
+  to_account_label: string;
+  payee: string;
+  note: string;
+}
+
+export type SlipRuleInput = Pick<
+  SlipRule,
+  'name' | 'match_kind' | 'match_text' | 'bank_id' | 'action' | 'category_id' | 'subcategory_id' | 'account_id' | 'to_account_id' | 'payee' | 'note'
+>;
 
 export interface User {
   id: number;
@@ -162,6 +204,7 @@ export interface TransferInput {
   to_account_id: number;
   amount: number;
   note: string;
+  slip_id?: number; // confirms this pending slip (create only)
 }
 
 /** Monthly rule that creates a normal transaction on `day` (clamped to the month's last day). */
@@ -418,4 +461,12 @@ export const api = {
   getSlip: (id: number) => request<Slip>(`/slips/${id}`),
   removeSlip: (id: number) => request<void>(`/slips/${id}`, { method: 'DELETE' }),
   slipImageUrl: (slip: Slip) => `${API_URL}${slip.image_url}`,
+
+  slipRules: () => request<SlipRule[]>('/slip-rules'),
+  saveSlipRule: (id: number | null, body: SlipRuleInput) =>
+    id
+      ? request<{ id: number }>(`/slip-rules/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+      : request<{ id: number }>('/slip-rules', post(body)),
+  removeSlipRule: (id: number) => request<void>(`/slip-rules/${id}`, { method: 'DELETE' }),
+  moveSlipRule: (id: number, dir: -1 | 1) => request<void>(`/slip-rules/${id}/move`, post({ dir })),
 };

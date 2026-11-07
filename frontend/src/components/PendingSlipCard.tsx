@@ -24,6 +24,13 @@ export function PendingSlipCard({
           <View style={styles.badge}>
             <Text style={styles.badgeText}>รอคอนเฟิร์ม</Text>
           </View>
+          {!!slip.suggestion && (
+            <View style={styles.rule}>
+              <Text style={styles.ruleText} numberOfLines={1}>
+                {slip.suggestion.action === 'transfer' ? '🔁' : '📋'} {slip.suggestion.rule_name}
+              </Text>
+            </View>
+          )}
           <Text style={{ color: COLORS.muted }}>
             {dateLabel(slip.date)}
             {!slip.date_found && ' (อ่านวันที่ไม่ได้)'}
@@ -37,7 +44,12 @@ export function PendingSlipCard({
           <Text style={styles.label}>ถึง </Text>
           {slip.to_name || '-'}
         </Text>
-        {!!slip.bank_name && <Text style={styles.small}>🏦 {slip.bank_name}</Text>}
+        {!!(slip.bank_name || slip.to_bank_name) && (
+          <Text style={styles.small} numberOfLines={1}>
+            🏦 {slip.bank_name || '?'}
+            {!!slip.to_bank_name && ` → ${slip.to_bank_name}`}
+          </Text>
+        )}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
         <Text style={styles.amount}>{slip.amount > 0 ? money(slip.amount) : 'ไม่พบจำนวนเงิน'}</Text>
@@ -65,6 +77,8 @@ const styles = StyleSheet.create({
   thumb: { width: 48, height: 72, borderRadius: 6, backgroundColor: '#fde68a' },
   badge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: COLORS.pending },
   badgeText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  rule: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: COLORS.primarySoft },
+  ruleText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
   line: { color: COLORS.text, fontSize: 13 },
   label: { color: COLORS.muted },
   small: { color: COLORS.muted, fontSize: 12 },

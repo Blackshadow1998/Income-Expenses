@@ -28,6 +28,7 @@ type transferInput struct {
 	ToAccountID   int64   `json:"to_account_id"`
 	Amount        float64 `json:"amount"`
 	Note          string  `json:"note"`
+	SlipID        *int64  `json:"slip_id"` // optional: confirms this pending slip (create only)
 }
 
 // shortLabelSQL is "ธนาคาร · ชื่อบัญชี" (or the type name when the account has no name) for aliases acc, bk, ty.
@@ -97,7 +98,13 @@ func (a *API) createTransfer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	res, err := a.db.ExecContext(r.Context(), `
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO transfers (user_id, txn_date, from_account_id, to_account_id, amount_satang, note)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		userID(r), in.Date, in.FromAccountID, in.ToAccountID, toSatang(in.Amount), in.Note)
@@ -106,6 +113,19 @@ func (a *API) createTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	if in.SlipID != nil {
+		if err := confirmSlipAsTransfer(r.Context(), tx, userID(r), *in.SlipID, id); errors.Is(err, errSlipTaken) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "สลิปนี้ถูกคอนเฟิร์มหรือถูกลบไปแล้ว"})
+			return
+		} else if err != nil {
+			serverError(w, err)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		serverError(w, err)
+		return
+	}
 	a.respondTransfer(w, r, id, http.StatusCreated)
 }
 
@@ -148,7 +168,26 @@ func (a *API) deleteTransfer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	res, err := a.db.ExecContext(r.Context(), `DELETE FROM transfers WHERE id = ? AND user_id = ?`, id, userID(r))
+	// A transfer confirmed from a slip takes its slip (row + image) with it.
+	uid := userID(r)
+	var slipFile string
+	err := a.db.QueryRowContext(r.Context(),
+		`SELECT image_file FROM slips WHERE transfer_id = ? AND user_id = ?`, id, uid).Scan(&slipFile)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		serverError(w, err)
+		return
+	}
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(r.Context(), `DELETE FROM slips WHERE transfer_id = ? AND user_id = ?`, id, uid); err != nil {
+		serverError(w, err)
+		return
+	}
+	res, err := tx.ExecContext(r.Context(), `DELETE FROM transfers WHERE id = ? AND user_id = ?`, id, uid)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -157,6 +196,11 @@ func (a *API) deleteTransfer(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
+	if err := tx.Commit(); err != nil {
+		serverError(w, err)
+		return
+	}
+	a.removeSlipFile(slipFile)
 	w.WriteHeader(http.StatusNoContent)
 }
 

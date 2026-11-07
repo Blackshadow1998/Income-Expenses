@@ -125,6 +125,26 @@ CREATE TABLE IF NOT EXISTS sessions (
 	created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- What to record when a slip matches: checked top to bottom (sort_order), the first match fills the
+-- confirm form. match_kind: 'to' receiver name contains match_text, 'from' sender name contains it,
+-- 'self' sender and receiver are the same person (money moved to one's own account).
+CREATE TABLE IF NOT EXISTS slip_rules (
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	name           TEXT    NOT NULL,               -- shown on the slip, e.g. "ค่าหอ"
+	match_kind     TEXT    NOT NULL CHECK (match_kind IN ('to', 'from', 'self')),
+	match_text     TEXT    NOT NULL DEFAULT '',
+	bank_id        INTEGER REFERENCES banks(id),   -- optional: the receiver's bank must be this
+	action         TEXT    NOT NULL CHECK (action IN ('transaction', 'transfer')),
+	category_id    INTEGER REFERENCES categories(id),
+	subcategory_id INTEGER REFERENCES subcategories(id) ON DELETE SET NULL,
+	account_id     INTEGER REFERENCES accounts(id) ON DELETE SET NULL,    -- default: account at the slip's sender bank
+	to_account_id  INTEGER REFERENCES accounts(id) ON DELETE SET NULL,    -- transfer target; default: at the receiver's bank
+	payee          TEXT    NOT NULL DEFAULT '',
+	note           TEXT    NOT NULL DEFAULT '',
+	sort_order     INTEGER NOT NULL DEFAULT 0
+);
+
 -- One-time codes for "forgot password", e-mailed to users.email. Only the hash is stored.
 CREATE TABLE IF NOT EXISTS password_resets (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -269,6 +289,14 @@ func migrate(db *sql.DB) error {
 	}
 	if err := upgradeSlips(db); err != nil {
 		return fmt.Errorf("upgrade slips: %w", err)
+	}
+	// After the rebuild above (it only copies the columns it knows): the receiver's bank, and slips
+	// confirmed as a transfer between own accounts (slip rules).
+	if err := addColumnIfMissing(db, "slips", "to_bank_id", "INTEGER REFERENCES banks(id)"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "slips", "transfer_id", "INTEGER REFERENCES transfers(id)"); err != nil {
+		return err
 	}
 	if err := upgradeSubcategories(db); err != nil {
 		return fmt.Errorf("upgrade subcategories: %w", err)

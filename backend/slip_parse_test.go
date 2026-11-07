@@ -28,7 +28,7 @@ xxx-x-x5678-x
 ค่าธรรมเนียม:
 0.00 บาท`,
 			want: SlipData{Date: "2026-11-06", Amount: 1250.50, FromName: "นาย สมชาย ใจดี",
-				ToName: "น.ส. สมหญิง รักดี", Ref: "015310143212ABC1234", Bank: "กสิกรไทย (KBank)"},
+				ToName: "น.ส. สมหญิง รักดี", Ref: "015310143212ABC1234", Bank: "กสิกรไทย (KBank)", ToBank: "ไทยพาณิชย์ (SCB)"},
 		},
 		{
 			name: "SCB style: labelled จาก / ไปยัง, full Buddhist year",

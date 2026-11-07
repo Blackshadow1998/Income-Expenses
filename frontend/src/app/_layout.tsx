@@ -62,6 +62,7 @@ function Gate() {
         <Stack.Screen name="subcategories" options={{ title: 'จัดการรายการ' }} />
         <Stack.Screen name="budgets" options={{ title: 'งบประมาณ' }} />
         <Stack.Screen name="recurring" options={{ title: 'รายการประจำ' }} />
+        <Stack.Screen name="slip-rules" options={{ title: 'เงื่อนไขสลิป' }} />
         <Stack.Screen name="debts" options={{ title: 'หนี้ ให้ยืม / กู้' }} />
         <Stack.Screen name="search" options={{ title: 'ค้นหารายการ' }} />
       </Stack>

@@ -20,6 +20,7 @@ type SlipData struct {
 	ToName   string  // receiver account name
 	Ref      string  // transaction reference number
 	Bank     string  // sender bank, matching banks.name
+	ToBank   string  // receiver bank, matching banks.name
 }
 
 // runOCR reads text from an image with tesseract (Thai + English).
@@ -113,7 +114,7 @@ func parseSlip(text string) SlipData {
 	for i, l := range lines {
 		keys[i] = compact(l)
 	}
-	return SlipData{
+	d := SlipData{
 		Date:     findDate(lines),
 		Amount:   findAmount(lines, keys),
 		FromName: findLabeled(lines, keys, []string{"จาก", "ผู้โอน", "from"}),
@@ -121,6 +122,31 @@ func parseSlip(text string) SlipData {
 		Ref:      findRef(lines, keys),
 		Bank:     findBank(strings.Join(keys, "\n")),
 	}.withNameFallback(lines, keys)
+	d.ToBank = findToBank(lines, keys, d.ToName)
+	return d
+}
+
+// findToBank is the bank named on the lines right below the receiver's name (where slips put it),
+// stopping at the amount / fee part.
+func findToBank(lines, keys []string, toName string) string {
+	if toName == "" {
+		return ""
+	}
+	for i, l := range lines {
+		if !strings.Contains(l, toName) {
+			continue
+		}
+		for j := i + 1; j < len(lines) && j <= i+3; j++ {
+			if strings.Contains(keys[j], "จำนวน") || isFeeLine(keys[j]) {
+				break
+			}
+			if b := findBank(keys[j]); b != "" {
+				return b
+			}
+		}
+		break
+	}
+	return ""
 }
 
 func isFeeLine(key string) bool {

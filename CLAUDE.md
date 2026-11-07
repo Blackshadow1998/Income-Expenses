@@ -41,7 +41,8 @@ cd frontend && npx expo start --web --port 8081                                #
   balances, cancel out in the all-accounts total, and are never part of in/out totals.
 - Balance = sum of account opening balances + signed transactions (+ transfers for a single account). Transactions saved before accounts existed have `account_id NULL` ("ไม่ระบุบัญชี") and still count in the total.
 - New/edited transactions **require** an account; payee ("ผู้รับ") and subcategory are optional.
-- Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`). Deleting that transaction deletes the slip + image.
+- Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`), or a transfer (`POST /api/transfers` with `slip_id` → `slips.transfer_id`). Deleting that transaction/transfer deletes the slip + image.
+- Slip rules (`slip_rules.go`, screen `slip-rules.tsx`): per-user, checked in `sort_order`, first match → `slip.suggestion` that only **prefills** the confirm form; never auto-confirm. `self` = sender and receiver are the same person (`samePerson`).
 - Deleting an account with transactions is refused (409).
 - Multi-user: `accounts`, `transactions`, `slips`, `transfers`, `subcategories` carry `user_id`; **every query must filter by `userID(r)`**.
   Categories, banks and account types are shared. New users get `starterSubcategories`.

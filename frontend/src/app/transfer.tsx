@@ -1,19 +1,21 @@
 import { Picker } from '@react-native-picker/picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ReactNode, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Account, api } from '@/api';
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Account, api, Slip } from '@/api';
 import { PressScale } from '@/components/motion';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, confirmAsync, currentMonth, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
 import { getLastAccountId, setPendingMonth } from '@/state';
 
-/** Add or edit a transfer between two of the user's own accounts. */
+/** Add or edit a transfer between two of the user's own accounts (or confirm a slip as one). */
 export default function TransferScreen() {
-  const params = useLocalSearchParams<{ id?: string; month?: string; accountId?: string }>();
+  const params = useLocalSearchParams<{ id?: string; month?: string; accountId?: string; slipId?: string }>();
   const editId = params.id ? Number(params.id) : undefined;
+  const slipId = !editId && params.slipId ? Number(params.slipId) : undefined;
 
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [slip, setSlip] = useState<Slip | null>(null);
   // The transfer being edited is already in the balances; take it out so they show "before".
   const [original, setOriginal] = useState<{ from: number; to: number; amount: number } | null>(null);
   const [fromId, setFromId] = useState<number | null>(null);
@@ -32,8 +34,14 @@ export default function TransferScreen() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [accs, tr] = await Promise.all([api.accounts(), editId ? api.getTransfer(editId) : Promise.resolve(null)]);
+      const [accs, tr, sl] = await Promise.all([
+        api.accounts(),
+        editId ? api.getTransfer(editId) : Promise.resolve(null),
+        slipId ? api.getSlip(slipId) : Promise.resolve(null),
+      ]);
+      if (sl && sl.status !== 'pending') throw new Error('สลิปนี้ถูกคอนเฟิร์มไปแล้ว');
       setAccounts(accs.accounts);
+      setSlip(sl);
       if (tr) {
         setOriginal({ from: tr.from_account_id, to: tr.to_account_id, amount: tr.amount });
         setFromId(tr.from_account_id);
@@ -41,6 +49,17 @@ export default function TransferScreen() {
         setDate(tr.date);
         setAmountText(String(tr.amount));
         setNote(tr.note);
+      } else if (sl) {
+        // From the slip: its rule's accounts, else the accounts at the sender's and receiver's banks.
+        const known = (id: number | null | undefined) => accs.accounts.find((a) => a.id === id)?.id;
+        const atBank = (bank: number | null, not?: number | null) =>
+          accs.accounts.find((a) => a.bank_id === bank && a.id !== not)?.id;
+        const from = known(sl.suggestion?.account_id) ?? atBank(sl.bank_id) ?? null;
+        setFromId(from);
+        setToId(known(sl.suggestion?.to_account_id) ?? atBank(sl.to_bank_id, from) ?? null);
+        setDate(sl.date);
+        if (sl.amount > 0) setAmountText(String(sl.amount));
+        setNote(sl.suggestion?.note ?? '');
       } else {
         // From: the filtered or last used account, else the one with the most money.
         const known = (id: number | null) => accs.accounts.find((a) => a.id === id)?.id;
@@ -59,7 +78,7 @@ export default function TransferScreen() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editId]);
+  }, [editId, slipId]);
 
   const amount = parseAmount(amountText);
   const before = (id: number | null) => {
@@ -87,7 +106,10 @@ export default function TransferScreen() {
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const body = { date, from_account_id: fromId!, to_account_id: toId!, amount: amount!, note: note.trim() };
+    const body = {
+      date, from_account_id: fromId!, to_account_id: toId!, amount: amount!, note: note.trim(),
+      ...(slip ? { slip_id: slip.id } : {}),
+    };
     setSaving(true);
     try {
       if (editId) await api.updateTransfer(editId, body);
@@ -113,7 +135,7 @@ export default function TransferScreen() {
     }
   };
 
-  const title = editId ? 'แก้ไขการโอน' : 'โอนระหว่างบัญชี';
+  const title = editId ? 'แก้ไขการโอน' : slipId ? 'คอนเฟิร์มสลิป (โอนระหว่างบัญชี)' : 'โอนระหว่างบัญชี';
   if (loading)
     return (
       <>
@@ -155,6 +177,22 @@ export default function TransferScreen() {
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title }} />
+      {slip && (
+        <View style={styles.slipCard}>
+          <Pressable onPress={() => Linking.openURL(api.slipImageUrl(slip))} accessibilityLabel="ดูรูปสลิป">
+            <Image source={{ uri: api.slipImageUrl(slip) }} style={styles.slipThumb} resizeMode="cover" />
+          </Pressable>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.slipTitle}>🧾 ข้อมูลจากสลิป (ตรวจสอบก่อนบันทึก)</Text>
+            <Text style={styles.hint}>จาก {slip.from_name || '-'}{slip.bank_name ? ` · ${slip.bank_name}` : ''}</Text>
+            <Text style={styles.hint}>ถึง {slip.to_name || '-'}{slip.to_bank_name ? ` · ${slip.to_bank_name}` : ''}</Text>
+            {!!slip.suggestion && <Text style={styles.ruleBadge}>📋 ใช้เงื่อนไข &quot;{slip.suggestion.rule_name}&quot;</Text>}
+            <Pressable onPress={() => router.replace({ pathname: '/transaction', params: { slipId: String(slip.id), as: 'transaction' } })}>
+              <Text style={{ color: COLORS.primary, fontSize: 12 }}>🧾 ไม่ใช่ — บันทึกเป็นรายการรับ/จ่ายแทน</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       <Card style={{ gap: 16 }}>
         <Text style={styles.hint}>ย้ายเงินระหว่างบัญชีของตัวเอง — ไม่นับเป็นรายรับหรือรายจ่าย ยอดรวมทุกบัญชีเท่าเดิม</Text>
 
@@ -217,7 +255,7 @@ export default function TransferScreen() {
 
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
-          <Button title={saving ? 'กำลังบันทึก...' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={saving} />
+          <Button title={saving ? 'กำลังบันทึก...' : slip ? 'คอนเฟิร์ม' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={saving} />
         </View>
         {!!editId && <Button title="ลบรายการโอนนี้" variant="danger" onPress={remove} />}
       </Card>
@@ -276,4 +314,8 @@ const styles = StyleSheet.create({
     marginVertical: -6,
   },
   readonly: { gap: 6, padding: 12, borderRadius: 12, backgroundColor: COLORS.subtle },
+  slipCard: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: COLORS.pendingBorder, backgroundColor: COLORS.pendingBg },
+  slipThumb: { width: 64, height: 96, borderRadius: 6, backgroundColor: '#fde68a' },
+  slipTitle: { fontWeight: '700', color: COLORS.pending },
+  ruleBadge: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
 });

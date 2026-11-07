@@ -11,6 +11,7 @@ export default function TransactionScreen() {
   // category / payee / amount prefill a new transaction (e.g. "คืนแล้ว" from the debts screen).
   const params = useLocalSearchParams<{
     id?: string; month?: string; accountId?: string; slipId?: string; category?: string; payee?: string; amount?: string;
+    as?: string; // 'transaction': keep a slip here even when its rule says "transfer"
   }>();
   const editId = params.id ? Number(params.id) : undefined;
   const slipId = !editId && params.slipId ? Number(params.slipId) : undefined;
@@ -49,6 +50,10 @@ export default function TransactionScreen() {
         slipId ? api.getSlip(slipId) : Promise.resolve(null),
       ]);
       if (sl && sl.status !== 'pending') throw new Error('สลิปนี้ถูกคอนเฟิร์มไปแล้ว');
+      if (sl?.suggestion?.action === 'transfer' && params.as !== 'transaction') {
+        router.replace({ pathname: '/transfer', params: { slipId: String(sl.id) } });
+        return;
+      }
       setCategories(cats);
       setSummary(accs);
       setSlip(sl);
@@ -72,6 +77,14 @@ export default function TransactionScreen() {
           setDate(sl.date);
           if (sl.amount > 0) setAmountText(String(sl.amount));
           setPayee(sl.to_name);
+          const s = sl.suggestion?.action === 'transaction' ? sl.suggestion : null;
+          if (s) {
+            if (s.category_id) setCategoryId(s.category_id);
+            setSubcategoryId(s.subcategory_id);
+            if (s.account_id && accs.accounts.some((a) => a.id === s.account_id)) setAccountId(s.account_id);
+            if (s.payee) setPayee(s.payee);
+            if (s.note) setNote(s.note);
+          }
         }
       }
     } catch (e) {
@@ -196,6 +209,13 @@ export default function TransactionScreen() {
             <SlipLine label="วันที่" value={slip.date_found ? dateLabel(slip.date) : 'อ่านไม่ได้ — ใช้วันที่อัปโหลด'} />
             {!!slip.ref && <SlipLine label="เลขที่รายการ" value={slip.ref} />}
             {!!slip.bank_name && <SlipLine label="ธนาคาร" value={slip.bank_name} />}
+            {!!slip.to_bank_name && <SlipLine label="ธนาคารปลายทาง" value={slip.to_bank_name} />}
+            {slip.suggestion?.action === 'transaction' && (
+              <Text style={styles.ruleBadge}>📋 ใช้เงื่อนไข &quot;{slip.suggestion.rule_name}&quot; — ตรวจสอบแล้วกดคอนเฟิร์ม</Text>
+            )}
+            <Pressable onPress={() => router.replace({ pathname: '/transfer', params: { slipId: String(slip.id) } })}>
+              <Text style={{ color: COLORS.primary, fontSize: 12 }}>🔁 นี่คือโอนระหว่างบัญชีตัวเอง</Text>
+            </Pressable>
             <Pressable onPress={() => setShowOcr((v) => !v)}>
               <Text style={{ color: COLORS.primary, fontSize: 12 }}>{showOcr ? '▲ ซ่อนข้อความที่อ่านได้' : '▼ ดูข้อความที่อ่านได้ทั้งหมด'}</Text>
             </Pressable>
@@ -407,6 +427,7 @@ const styles = StyleSheet.create({
   },
   slipThumb: { width: 80, height: 120, borderRadius: 6, backgroundColor: '#fde68a' },
   slipTitle: { fontWeight: '700', color: COLORS.pending },
+  ruleBadge: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
   ocrText: { fontSize: 11, color: COLORS.muted, backgroundColor: COLORS.input, padding: 8, borderRadius: 6 },
   label: { fontWeight: '700', color: COLORS.text },
   hint: { color: COLORS.muted, fontSize: 13 },

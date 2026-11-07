@@ -65,6 +65,9 @@ function Gate() {
         <Stack.Screen name="slip-rules" options={{ title: 'เงื่อนไขสลิป' }} />
         <Stack.Screen name="debts" options={{ title: 'หนี้ ให้ยืม / กู้' }} />
         <Stack.Screen name="search" options={{ title: 'ค้นหารายการ' }} />
+        <Stack.Screen name="trip" options={{ title: 'ทริป' }} />
+        <Stack.Screen name="trip-bill" options={{ title: 'บิล' }} />
+        <Stack.Screen name="trip-payment" options={{ title: 'การจ่ายเงิน' }} />
       </Stack>
       {status === 'needsPassword' && (
         <Overlay>

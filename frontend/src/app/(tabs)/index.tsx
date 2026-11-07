@@ -9,6 +9,7 @@ import { BudgetCard } from '@/components/BudgetCard';
 import { InsightsCard } from '@/components/InsightsCard';
 import { AnimatedNumber, FadeIn, GrowBar, PressScale, Skeleton } from '@/components/motion';
 import { PendingSlipCard } from '@/components/PendingSlipCard';
+import { PeriodSwitch } from '@/components/PeriodSwitch';
 import { Button, Card, ErrorBox, IconBubble, Stepper } from '@/components/ui';
 import {
   CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, currentMonth, dateLabel, GRADIENTS, money, monthLabel,
@@ -182,6 +183,7 @@ export default function MonthScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
+      <PeriodSwitch current="month" />
       <FadeIn>
         <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <View style={[styles.blob, { width: 180, height: 180, top: -60, right: -40 }]} />

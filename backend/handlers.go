@@ -86,7 +86,8 @@ func (a *API) routes() http.Handler {
 	mux.HandleFunc("GET /api/auth/config", a.authConfig)
 	mux.HandleFunc("POST /api/auth/google", a.googleSignIn)
 	mux.HandleFunc("POST /api/auth/google/link", a.withSession(a.linkGoogle))
-	mux.HandleFunc("GET /api/slips/{id}/image", a.slipImage) // signed link instead of a session
+	mux.HandleFunc("GET /api/slips/{id}/image", a.slipImage)            // signed link instead of a session
+	mux.HandleFunc("GET /api/trip-payments/{id}/slip", a.tripSlipImage) // likewise
 
 	// Everything below needs a signed-in, PIN-unlocked session and only sees that user's data.
 	data := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, a.requireUnlocked(h)) }
@@ -134,6 +135,22 @@ func (a *API) routes() http.Handler {
 	data("GET /api/transfers/{id}", a.getTransfer)
 	data("PUT /api/transfers/{id}", a.updateTransfer)
 	data("DELETE /api/transfers/{id}", a.deleteTransfer)
+	data("GET /api/trips", a.listTrips)
+	data("POST /api/trips", a.createTrip)
+	data("GET /api/trips/{id}", a.getTrip)
+	data("PUT /api/trips/{id}", a.updateTrip)
+	data("DELETE /api/trips/{id}", a.deleteTrip)
+	data("POST /api/trips/{id}/members", a.addTripMember)
+	data("DELETE /api/trips/{id}/members/{member}", a.deleteTripMember)
+	data("GET /api/trips/{id}/bills", a.listTripBills)
+	data("POST /api/trips/{id}/bills", a.createTripBill)
+	data("PUT /api/bills/{id}", a.updateTripBill)
+	data("DELETE /api/bills/{id}", a.deleteTripBill)
+	data("GET /api/trips/{id}/summary", a.tripSummary)
+	data("GET /api/trips/{id}/payments", a.listTripPayments)
+	data("POST /api/trips/{id}/payments", a.createTripPayment)
+	data("PATCH /api/payments/{id}", a.updateTripPayment)
+	data("DELETE /api/payments/{id}", a.deleteTripPayment)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { notFound(w) })
 	if a.webDir != "" {
@@ -702,7 +719,7 @@ func serverError(w http.ResponseWriter, err error) {
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

@@ -132,6 +132,20 @@ select box จะแสดงเฉพาะหมวดที่มีราย
   ส่วนวันที่มักอ่านจากรูปเดิมได้ดีกว่า (ใช้เวลาราว 5–6 วินาทีต่อสลิป)
 - ทดสอบตัวอ่าน: `docker run --rm -v "$PWD/backend:/src" -w /src golang:1.25-alpine go test ./...`
 
+### หารบิลทริป (แท็บ "หารบิล")
+
+คิดเงินตอนไปเที่ยวกับเพื่อน: สร้างทริป ใส่ชื่อสมาชิก (ไม่ต้องมีบัญชีในแอป) ลงบิลว่าใครจ่ายและหารกับใคร
+แล้วดูว่าใครต้องโอนให้ใคร เท่าไหร่ พร้อมบันทึกการจ่าย (แนบสลิปได้) จนเคลียร์ครบ
+- **บิล**: หารเท่ากัน (ค่าเริ่มต้น), ระบุจำนวนต่อคน (ต้องรวมเท่ายอดบิล), หรือตามสัดส่วน (เช่น 2:1:1)
+- **เศษสตางค์**: หารไม่ลงตัว เศษให้ผู้จ่ายบิล (ถ้าอยู่ในคนหาร) ไม่งั้นให้คนแรกในรายชื่อ — รวมแล้วตรงยอดบิลเสมอ
+- **สรุปยอด** 2 แบบ: **รายคู่** (หักลบหนี้ของแต่ละคู่) หรือ **ลดจำนวนการโอน** (ลูกหนี้รายใหญ่สุดโอนให้เจ้าหนี้รายใหญ่สุดก่อน)
+  + การ์ดต่อคน (ต้องรับ / ต้องจ่าย / ยอดสุทธิ), แถบความคืบหน้าการเก็บเงิน, ปุ่ม **คัดลอกสรุป** ไปวางในไลน์
+- **การจ่ายเงิน**: กด "จ่ายแล้ว" ที่คู่ไหนก็ได้ (จ่ายบางส่วนได้) แนบสลิป PNG/JPG/WEBP ≤ 10MB, ผู้รับกดยืนยันได้, แก้/ลบได้
+  สถานะคู่: ยังไม่จ่าย / จ่ายบางส่วน / จ่ายครบ
+- ยอดทุกอย่างคำนวณใหม่จากบิลและการจ่ายทุกครั้ง (ไม่เก็บยอดซ้ำ); เงินเป็นสตางค์ (int64) ไม่ใช้ทศนิยม
+- ตรรกะคำนวณอยู่ใน `backend/split` (แยกจาก HTTP/DB) — `go test ./split`; ฝั่งหน้าบ้าน `cd frontend && npm test`
+- แท็บ "รายรับรายจ่าย" รวมรายเดือนกับรายปีไว้ด้วยกัน (สลับที่ปุ่มด้านบน)
+
 ## API
 
 ทุก path ยกเว้น `/api/health`, `/api/auth/signup`, `/api/auth/login` ต้องส่ง `Authorization: Bearer <token>`
@@ -179,6 +193,16 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | GET/POST | `/api/slip-rules` | เงื่อนไขสลิป `{name, match_kind: to\|from\|self, match_text, bank_id?, action: transaction\|transfer, category_id?, subcategory_id?, account_id?, to_account_id?, payee, note}` |
 | PUT/DELETE | `/api/slip-rules/{id}` | แก้ / ลบ เงื่อนไข |
 | POST | `/api/slip-rules/{id}/move` | เลื่อนลำดับ `{dir: -1\|1}` |
+| GET/POST | `/api/trips` | ทริปของฉัน / สร้าง `{name, members: [ชื่อ...]}` |
+| GET/PUT/DELETE | `/api/trips/{id}` | ทริป (สมาชิก + บิล + การจ่าย) / เปลี่ยนชื่อ `{name}` / ลบทั้งทริป |
+| POST | `/api/trips/{id}/members` | เพิ่มสมาชิก `{name}` |
+| DELETE | `/api/trips/{id}/members/{member}` | ลบสมาชิก (409 ถ้ามีบิลหรือการจ่ายอ้างถึง) |
+| GET/POST | `/api/trips/{id}/bills` | บิล / เพิ่ม `{title, amount, payer_id, split_mode: equal\|amount\|ratio, date, parts: [{member_id, value}]}` |
+| PUT/DELETE | `/api/bills/{id}` | แก้ / ลบ บิล |
+| GET | `/api/trips/{id}/summary?mode=pairwise\|minimal` | สรุปยอด: `pairs`, `transfers` (minimal), `people`, `progress` |
+| GET/POST | `/api/trips/{id}/payments` | ประวัติ / บันทึกการจ่าย (multipart: `from_member, to_member, amount, date, note` + ไฟล์ `slip`) |
+| PATCH/DELETE | `/api/payments/{id}` | ยืนยันรับ `{confirmed}` หรือแก้ `{amount, date, note}` / ยกเลิกการจ่าย |
+| GET | `/api/trip-payments/{id}/slip?exp=&sig=` | รูปสลิปการจ่าย (ลิงก์ลงลายเซ็นจาก `slip_url`) |
 
 `/api/transactions`, `/api/summary/yearly`, `/api/balance` รับ `account_id=` เพื่อกรองเฉพาะบัญชีได้
 คอนเฟิร์มสลิป = `POST /api/transactions` หรือ `POST /api/transfers` พร้อม `slip_id` · สลิปที่ตรงเงื่อนไขมี `suggestion` (สิ่งที่จะเติมในฟอร์ม)

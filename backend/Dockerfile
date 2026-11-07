@@ -14,6 +14,7 @@ WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/*.go ./
+COPY backend/split/ ./split/
 # modernc.org/sqlite is pure Go, so no CGO / C toolchain is needed.
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/api .
 

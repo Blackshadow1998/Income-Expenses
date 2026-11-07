@@ -145,6 +145,56 @@ CREATE TABLE IF NOT EXISTS slip_rules (
 	sort_order     INTEGER NOT NULL DEFAULT 0
 );
 
+-- Trip bill splitting (trips.go, split/). Members are just names, not app users. Balances are never
+-- stored: they are worked out from the bills and payments each time.
+CREATE TABLE IF NOT EXISTS trips (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	name       TEXT    NOT NULL,
+	created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS trip_members (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	trip_id    INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+	name       TEXT    NOT NULL,
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (trip_id, name)
+);
+CREATE TABLE IF NOT EXISTS trip_bills (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	trip_id       INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+	title         TEXT    NOT NULL,
+	amount_satang INTEGER NOT NULL CHECK (amount_satang > 0),
+	payer_id      INTEGER NOT NULL REFERENCES trip_members(id),
+	split_mode    TEXT    NOT NULL DEFAULT 'equal' CHECK (split_mode IN ('equal', 'amount', 'ratio')),
+	bill_date     TEXT    NOT NULL,
+	created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+-- Who shares a bill; value = satang (split_mode 'amount'), weight ('ratio'), unused ('equal').
+CREATE TABLE IF NOT EXISTS trip_bill_parts (
+	bill_id    INTEGER NOT NULL REFERENCES trip_bills(id) ON DELETE CASCADE,
+	member_id  INTEGER NOT NULL REFERENCES trip_members(id),
+	value      INTEGER NOT NULL DEFAULT 0,
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (bill_id, member_id)
+);
+-- Money handed over between members, optionally with a slip image (file in the trip-slips directory).
+CREATE TABLE IF NOT EXISTS trip_payments (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	trip_id       INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+	from_member   INTEGER NOT NULL REFERENCES trip_members(id),
+	to_member     INTEGER NOT NULL REFERENCES trip_members(id),
+	amount_satang INTEGER NOT NULL CHECK (amount_satang > 0),
+	paid_on       TEXT    NOT NULL,
+	note          TEXT    NOT NULL DEFAULT '',
+	slip_file     TEXT    NOT NULL DEFAULT '',
+	confirmed_at  TEXT,                             -- the receiver confirmed getting it
+	created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_trips_user ON trips(user_id);
+CREATE INDEX IF NOT EXISTS idx_trip_bills_trip ON trip_bills(trip_id);
+CREATE INDEX IF NOT EXISTS idx_trip_payments_trip ON trip_payments(trip_id);
+
 -- One-time codes for "forgot password", e-mailed to users.email. Only the hash is stored.
 CREATE TABLE IF NOT EXISTS password_resets (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,

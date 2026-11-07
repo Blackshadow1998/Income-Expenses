@@ -28,6 +28,7 @@ See README.md for features, API table and run commands.
 docker compose up -d --build                                                   # backend (Go is not installed locally)
 docker run --rm -v "$PWD/backend:/src" -w /src golang:1.25-alpine sh -c "gofmt -l -w . && go vet ./... && go test ./..."
 cd frontend && npx tsc --noEmit                                                # typecheck
+cd frontend && npm test                                                        # trip-split helpers (node --test)
 cd frontend && npx eslint src                                                  # lint (0 errors expected; set-state-in-effect is a known warning)
 cd frontend && npx expo start --web --port 8081                                # web UI (also in .claude/launch.json)
 ```
@@ -44,6 +45,13 @@ cd frontend && npx expo start --web --port 8081                                #
 - Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`), or a transfer (`POST /api/transfers` with `slip_id` → `slips.transfer_id`). Deleting that transaction/transfer deletes the slip + image.
 - OCR runs twice (original + ImageMagick 2x); `slips.ocr_text` holds both, split by `upscaledMark`. Always parse
   stored text with `parseSlipText` (merges field by field), never `parseSlip` directly.
+- Trip bill splitting (`trips.go`, screens `(tabs)/trips.tsx`, `trip.tsx`, `trip-bill.tsx`, `trip-payment.tsx`): members are
+  names, not users; all maths is in package `backend/split` (int64 satang, leftover satang to the payer if sharing else
+  the first listed; pairwise netting and greedy "minimal" transfers). Balances are never stored — always computed from
+  `trip_bills`/`trip_bill_parts` minus `trip_payments`. Payment slips live in the slips dir as `trip-*` files (backed up).
+  `frontend/src/tripSplit.ts` mirrors the share rule for the form preview (`npm test` runs its tests with Node).
+- The "รายรับรายจ่าย" tab is `index` (month) + hidden `yearly` route, switched by `PeriodSwitch`; the tab bar takes
+  glyphs + aliases (`makeSpotlightTabBar`).
 - Slip rules (`slip_rules.go`, screen `slip-rules.tsx`): per-user, checked in `sort_order`, first match → `slip.suggestion` that only **prefills** the confirm form; never auto-confirm. `self` = sender and receiver are the same person (`samePerson`).
 - Deleting an account with transactions is refused (409).
 - Multi-user: `accounts`, `transactions`, `slips`, `transfers`, `subcategories` carry `user_id`; **every query must filter by `userID(r)`**.

@@ -11,22 +11,29 @@ const BAR_HEIGHT = 64;
 /**
  * Floating dark-glass tab bar with a "spotlight": a lamp on the top edge of the active tab shines a cone
  * of warm light down onto its icon, and glides to the next tab on press. Other tabs are dimmed.
- * `glyphs` maps route names to their emoji icon.
+ * `glyphs` maps route names to their emoji icon; routes without one get no button, and `aliases` says
+ * which button lights up for them (e.g. the yearly view belongs to the "รายรับรายจ่าย" tab).
  */
-export function makeSpotlightTabBar(glyphs: Record<string, string>) {
+export function makeSpotlightTabBar(glyphs: Record<string, string>, aliases: Record<string, string> = {}) {
   return function TabBar(props: BottomTabBarProps) {
-    return <Bar {...props} glyphs={glyphs} />;
+    return <Bar {...props} glyphs={glyphs} aliases={aliases} />;
   };
 }
 
-function Bar({ state, descriptors, emitter, navigateToTab, insets, glyphs }: BottomTabBarProps & { glyphs: Record<string, string> }) {
+function Bar({ state, descriptors, emitter, navigateToTab, insets, glyphs, aliases }: BottomTabBarProps & {
+  glyphs: Record<string, string>;
+  aliases: Record<string, string>;
+}) {
   const [width, setWidth] = useState(0);
-  const pos = useState(() => new Animated.Value(state.index))[0];
-  const tabWidth = width / state.routes.length;
+  const routes = state.routes.filter((r) => glyphs[r.name] !== undefined);
+  const current = state.routes[state.index].name;
+  const active = Math.max(0, routes.findIndex((r) => r.name === (aliases[current] ?? current)));
+  const pos = useState(() => new Animated.Value(active))[0];
+  const tabWidth = width / routes.length;
 
   useEffect(() => {
-    Animated.spring(pos, { toValue: state.index, speed: 14, bounciness: 6, useNativeDriver }).start();
-  }, [pos, state.index]);
+    Animated.spring(pos, { toValue: active, speed: 14, bounciness: 6, useNativeDriver }).start();
+  }, [pos, active]);
 
   return (
     // Half the bottom inset is enough: the floating bar's own margin already clears the gesture bar.
@@ -44,9 +51,9 @@ function Bar({ state, descriptors, emitter, navigateToTab, insets, glyphs }: Bot
             <View style={styles.lamp} />
           </Animated.View>
         )}
-        {state.routes.map((route, index) => {
+        {routes.map((route, index) => {
           const { options } = descriptors[route.key];
-          const focused = index === state.index;
+          const focused = index === active;
           const label = typeof options.tabBarLabel === 'string' ? options.tabBarLabel : (options.title ?? route.name);
           const onPress = () => {
             const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });

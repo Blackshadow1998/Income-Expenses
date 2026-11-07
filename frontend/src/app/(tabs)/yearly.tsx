@@ -6,6 +6,7 @@ import { Account, api, Category, YearData } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
 import { BarChart, BarSeries } from '@/components/BarChart';
 import { AnimatedNumber, FadeIn, PressScale, Skeleton } from '@/components/motion';
+import { PeriodSwitch } from '@/components/PeriodSwitch';
 import { Button, Card, ErrorBox, Stepper } from '@/components/ui';
 import { CATEGORY_COLORS, COLORS, GRADIENTS, money, MONTHS_FULL, MONTHS_SHORT, pad2 } from '@/format';
 import { setPendingMonth } from '@/state';
@@ -76,6 +77,7 @@ export default function YearlyScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
+      <PeriodSwitch current="year" />
       <FadeIn>
         <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <View style={[styles.blob, { width: 170, height: 170, top: -60, right: -40 }]} />

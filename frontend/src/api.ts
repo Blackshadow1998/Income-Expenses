@@ -139,6 +139,91 @@ export interface User {
   has_pin: boolean;
 }
 
+// --- Trip bill splitting (members are names, not app users; amounts in baht) ---
+
+export type SplitMode = 'equal' | 'amount' | 'ratio';
+
+export interface TripMember {
+  id: number;
+  name: string;
+}
+
+export interface TripBill {
+  id: number;
+  title: string;
+  amount: number;
+  payer_id: number;
+  split_mode: SplitMode;
+  date: string;
+  parts: { member_id: number; value: number; share: number }[]; // value: baht ('amount') or weight ('ratio')
+}
+
+export interface TripBillInput {
+  title: string;
+  amount: number;
+  payer_id: number;
+  split_mode: SplitMode;
+  date: string;
+  parts: { member_id: number; value: number }[];
+}
+
+export interface TripPayment {
+  id: number;
+  from_member: number;
+  to_member: number;
+  amount: number;
+  date: string;
+  note: string;
+  slip_url: string; // signed, short-lived; '' without a slip
+  confirmed: boolean;
+  confirmed_at: string;
+}
+
+export interface Trip {
+  id: number;
+  name: string;
+  created_at: string;
+  total: number;
+  members: TripMember[];
+  bills: TripBill[];
+  payments: TripPayment[];
+}
+
+export interface TripListItem {
+  id: number;
+  name: string;
+  created_at: string;
+  member_count: number;
+  bill_count: number;
+  total: number;
+}
+
+export interface TripPair {
+  from: number;
+  to: number;
+  from_name: string;
+  to_name: string;
+  owed: number;
+  paid: number;
+  remaining: number; // still due; negative = overpaid
+  status: 'unpaid' | 'partial' | 'paid';
+}
+
+export interface TripOwing {
+  member_id: number;
+  name: string;
+  amount: number;
+}
+
+export interface TripSummary {
+  mode: 'pairwise' | 'minimal';
+  total: number;
+  pairs: TripPair[];
+  transfers: TripPair[]; // minimal mode: transfers left that settle everyone
+  people: { member_id: number; name: string; net: number; receive: TripOwing[]; pay: TripOwing[] }[];
+  progress: { owed: number; paid: number };
+}
+
 export interface SignInResult {
   token: string;
   user: User;
@@ -469,4 +554,34 @@ export const api = {
       : request<{ id: number }>('/slip-rules', post(body)),
   removeSlipRule: (id: number) => request<void>(`/slip-rules/${id}`, { method: 'DELETE' }),
   moveSlipRule: (id: number, dir: -1 | 1) => request<void>(`/slip-rules/${id}/move`, post({ dir })),
+
+  trips: () => request<TripListItem[]>('/trips'),
+  createTrip: (name: string, members: string[]) => request<Trip>('/trips', post({ name, members })),
+  trip: (id: number) => request<Trip>(`/trips/${id}`),
+  renameTrip: (id: number, name: string) => request<Trip>(`/trips/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  removeTrip: (id: number) => request<void>(`/trips/${id}`, { method: 'DELETE' }),
+  addTripMember: (id: number, name: string) => request<Trip>(`/trips/${id}/members`, post({ name })),
+  removeTripMember: (id: number, memberId: number) => request<Trip>(`/trips/${id}/members/${memberId}`, { method: 'DELETE' }),
+  createTripBill: (tripId: number, body: TripBillInput) => request<Trip>(`/trips/${tripId}/bills`, post(body)),
+  updateTripBill: (id: number, body: TripBillInput) => request<Trip>(`/bills/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  removeTripBill: (id: number) => request<Trip>(`/bills/${id}`, { method: 'DELETE' }),
+  tripSummary: (id: number, mode: TripSummary['mode']) => request<TripSummary>(`/trips/${id}/summary?mode=${mode}`),
+  /** Records money handed over, with an optional slip image (multipart). */
+  createTripPayment: (
+    tripId: number,
+    p: { from_member: number; to_member: number; amount: number; date: string; note: string },
+    slip?: ImagePickerAsset | null,
+  ) => {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(p)) form.append(k, String(v));
+    if (slip) {
+      if (Platform.OS === 'web' && slip.file) form.append('slip', slip.file, slip.fileName ?? slip.file.name);
+      else form.append('slip', { uri: slip.uri, name: slip.fileName ?? 'slip.jpg', type: slip.mimeType ?? 'image/jpeg' } as unknown as Blob);
+    }
+    return request<Trip>(`/trips/${tripId}/payments`, { method: 'POST', body: form });
+  },
+  updateTripPayment: (id: number, patch: { confirmed?: boolean; amount?: number; date?: string; note?: string }) =>
+    request<Trip>(`/payments/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  removeTripPayment: (id: number) => request<Trip>(`/payments/${id}`, { method: 'DELETE' }),
+  tripSlipUrl: (p: TripPayment) => `${API_URL}${p.slip_url}`,
 };

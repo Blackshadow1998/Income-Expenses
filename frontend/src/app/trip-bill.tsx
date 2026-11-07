@@ -1,6 +1,6 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, SplitMode, Trip, TripOCR } from '@/api';
 import { PressScale } from '@/components/motion';
@@ -37,6 +37,9 @@ export default function TripBillScreen() {
   const [ocr, setOcr] = useState<TripOCR | null>(null);
   const [picked, setPicked] = useState<number[]>([]); // receipt items tapped (-1 = the total)
   const [autoTitle, setAutoTitle] = useState(''); // the title last filled from items, replaced on the next tap
+  const [used, setUsed] = useState<number[]>([]); // receipt items already saved as bills from this form
+  const [savedNote, setSavedNote] = useState('');
+  const scroll = useRef<ScrollView>(null);
 
   const load = async () => {
     setError(null);
@@ -72,6 +75,8 @@ export default function TripBillScreen() {
     setImage(a);
     setOcr(null);
     setPicked([]);
+    setUsed([]);
+    setSavedNote('');
     setReading(true);
     try {
       const r = await api.tripOCR(a, 'receipt');
@@ -85,7 +90,7 @@ export default function TripBillScreen() {
   };
 
   const pickItem = (i: number) => {
-    if (!ocr) return;
+    if (!ocr || used.includes(i)) return;
     const next = i === -1 ? (picked.includes(-1) ? [] : [-1]) : picked.includes(i) ? picked.filter((x) => x !== i) : [...picked.filter((x) => x !== -1), i];
     setPicked(next);
     const items = next.filter((x) => x >= 0).map((x) => ocr.items[x]);
@@ -138,6 +143,21 @@ export default function TripBillScreen() {
       showError(new Error(`บันทึกบิลแล้ว แต่แนบรูปไม่สำเร็จ: ${(e as Error).message}`));
     }
     setSaving(false);
+    // A new bill from some receipt items: stay so the remaining items can be split as more bills.
+    const nowUsed = [...used, ...picked];
+    if (!billId && ocr && !picked.includes(-1) && picked.length && ocr.items.some((_, i) => !nowUsed.includes(i))) {
+      setUsed(nowUsed);
+      setPicked([]);
+      setSavedNote(`บันทึก "${body.title}" แล้ว · เลือกรายการที่เหลือต่อได้`);
+      setTitle('');
+      setAutoTitle('');
+      setAmountText('');
+      setMode('equal');
+      setValues({});
+      setChosen(trip!.members.map((m) => m.id));
+      scroll.current?.scrollTo({ y: 0, animated: true });
+      return;
+    }
     router.back();
   };
 
@@ -156,7 +176,7 @@ export default function TripBillScreen() {
   if (!trip) return <><Stack.Screen options={{ title: screenTitle }} /><Loading /></>;
 
   return (
-    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={scroll} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: screenTitle }} />
       <Card style={{ gap: 14 }}>
         <Field label="รูปบิล (ไม่บังคับ)">
@@ -168,20 +188,30 @@ export default function TripBillScreen() {
               setSavedImage('');
               setOcr(null);
               setPicked([]);
+              setUsed([]);
+              setSavedNote('');
             }}
             busy={reading}
             emptyLabel="ถ่ายบิล"
           />
           {ocr && (ocr.items.length > 0 || ocr.amount > 0) ? (
             <View style={styles.preview}>
+              {savedNote ? <Text style={styles.savedNote}>✓ {savedNote}</Text> : null}
               <Text style={styles.hint}>อ่านจากรูป (อาจผิด ตรวจก่อนบันทึก) · แตะรายการที่จะหาร เลือกได้หลายรายการ</Text>
-              {ocr.items.map((it, i) => (
-                <PressScale key={i} onPress={() => pickItem(i)} style={[styles.ocrRow, picked.includes(i) && styles.checkOn]} accessibilityRole="checkbox" accessibilityState={{ checked: picked.includes(i) }}>
-                  <Text style={[styles.chipText, { flex: 1 }]} numberOfLines={1}>{picked.includes(i) ? '☑' : '☐'} {it.name}</Text>
-                  <Text style={styles.share}>{money(it.amount)}</Text>
-                </PressScale>
-              ))}
-              {ocr.amount > 0 && (
+              {ocr.items.map((it, i) =>
+                used.includes(i) ? (
+                  <View key={i} style={[styles.ocrRow, styles.ocrUsed]} accessibilityState={{ disabled: true }}>
+                    <Text style={[styles.chipText, { flex: 1 }]} numberOfLines={1}>✓ {it.name} (บันทึกแล้ว)</Text>
+                    <Text style={styles.share}>{money(it.amount)}</Text>
+                  </View>
+                ) : (
+                  <PressScale key={i} onPress={() => pickItem(i)} style={[styles.ocrRow, picked.includes(i) && styles.checkOn]} accessibilityRole="checkbox" accessibilityState={{ checked: picked.includes(i) }}>
+                    <Text style={[styles.chipText, { flex: 1 }]} numberOfLines={1}>{picked.includes(i) ? '☑' : '☐'} {it.name}</Text>
+                    <Text style={styles.share}>{money(it.amount)}</Text>
+                  </PressScale>
+                ),
+              )}
+              {ocr.amount > 0 && used.length === 0 && (
                 <PressScale onPress={() => pickItem(-1)} style={[styles.ocrRow, picked.includes(-1) && styles.checkOn]} accessibilityRole="checkbox" accessibilityState={{ checked: picked.includes(-1) }}>
                   <Text style={[styles.chipText, { flex: 1 }]}>{picked.includes(-1) ? '☑' : '☐'} ทั้งบิล (ยอดสุทธิ)</Text>
                   <Text style={styles.share}>{money(ocr.amount)}</Text>
@@ -294,7 +324,7 @@ export default function TripBillScreen() {
         )}
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => router.back()} />
+          <Button title={used.length ? 'เสร็จ' : 'ยกเลิก'} variant="outline" style={{ flex: 1 }} onPress={() => router.back()} />
           <Button title={saving ? 'กำลังบันทึก...' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={saving || !!(preview && 'error' in preview)} />
         </View>
         {!!billId && <Button title="ลบบิลนี้" variant="danger" onPress={remove} />}
@@ -335,6 +365,8 @@ const styles = StyleSheet.create({
   segText: { fontWeight: '700', color: COLORS.muted, fontSize: 13 },
   preview: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: COLORS.subtle },
   previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ocrUsed: { opacity: 0.45 },
+  savedNote: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   ocrRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
   name: { fontWeight: '700', color: COLORS.text },
   valueInput: { width: 90, paddingVertical: 6, textAlign: 'right' },

@@ -1,7 +1,7 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, ScrollViewInstance, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, SplitMode, Trip, TripOCR } from '@/api';
 import { PressScale } from '@/components/motion';
 import { PhotoField } from '@/components/PhotoField';
@@ -39,7 +39,7 @@ export default function TripBillScreen() {
   const [autoTitle, setAutoTitle] = useState(''); // the title last filled from items, replaced on the next tap
   const [used, setUsed] = useState<number[]>([]); // receipt items already saved as bills from this form
   const [savedNote, setSavedNote] = useState('');
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
 
   const load = async () => {
     setError(null);

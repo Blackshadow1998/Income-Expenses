@@ -95,6 +95,48 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   return <Animated.View style={[{ backgroundColor: COLORS.skeleton, borderRadius: 12 }, style, { opacity: v }]} />;
 }
 
+const GRID = [0, 1, 2];
+// Brown -> caramel along the diagonal, matching the header gradient.
+const GRID_COLORS = ['#5c3d2e', '#7a5236', '#8b5e3c', '#a9714a', '#c08552'];
+
+/**
+ * 3×3 grid loader: the squares shrink and come back in a wave running diagonally from the top-left
+ * corner, each square tinted brown to caramel along the diagonal.
+ */
+export function GridLoader({ size = 44 }: { size?: number }) {
+  const v = useState(() => new Animated.Value(0))[0];
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 1300, easing: Easing.linear, useNativeDriver: native }));
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  const gap = Math.max(2, Math.round(size / 18));
+  const cell = (size - gap * 2) / 3;
+  return (
+    <Animated.View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', gap }} accessibilityRole="progressbar" accessibilityLabel="กำลังโหลด">
+      {GRID.flatMap((row) =>
+        GRID.map((col) => {
+          const d = (row + col) * 0.1 + 0.001; // diagonal delay, 0..0.4 of the cycle
+          const wave = v.interpolate({ inputRange: [0, d, d + 0.3, d + 0.55, 1], outputRange: [1, 1, 0.15, 1, 1] });
+          return (
+            <Animated.View
+              key={`${row}${col}`}
+              style={{
+                width: cell,
+                height: cell,
+                borderRadius: cell / 4,
+                backgroundColor: GRID_COLORS[row + col],
+                opacity: wave.interpolate({ inputRange: [0.15, 1], outputRange: [0.35, 1] }),
+                transform: [{ scale: wave }, { rotate: v.interpolate({ inputRange: [0, d, d + 0.3, d + 0.55, 1], outputRange: ['0deg', '0deg', '45deg', '90deg', '90deg'] }) }],
+              }}
+            />
+          );
+        }),
+      )}
+    </Animated.View>
+  );
+}
+
 /** Bar whose width grows to `fraction` (0–1) of its track. */
 export function GrowBar({ fraction, color, style, delay = 0 }: {
   fraction: number;

@@ -1,8 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import { COLORS, GRADIENTS, SHADOW } from '../format';
-import { FadeIn, PressScale, Shake, ShakeHandle } from './motion';
+import { FadeIn, GridLoader, PressScale, Shake, ShakeHandle } from './motion';
 
 export const PIN_LENGTH = 6;
 
@@ -80,7 +80,7 @@ export function PinPad({
         </View>
       </Shake>
       <View style={styles.status}>
-        {busy ? <ActivityIndicator color={COLORS.primary} /> : !!error && <Text style={styles.error}>{error}</Text>}
+        {busy ? <GridLoader size={22} /> : !!error && <Text style={styles.error}>{error}</Text>}
       </View>
 
       <View style={styles.keypad}>

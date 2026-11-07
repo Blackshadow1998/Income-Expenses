@@ -1,7 +1,7 @@
 import React from 'react';
-import { ActivityIndicator, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { COLORS, SHADOW } from '../format';
-import { PressScale } from './motion';
+import { GridLoader, PressScale } from './motion';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -51,7 +51,7 @@ const VARIANTS: Record<ButtonVariant, { bg: string; fg: string; border: string }
 export function Loading() {
   return (
     <View style={{ padding: 32, alignItems: 'center' }}>
-      <ActivityIndicator color={COLORS.primary} />
+      <GridLoader />
     </View>
   );
 }

@@ -24,6 +24,14 @@
       body {
         overflow: hidden;
       }
+      /* The app draws its own show-password button and focus ring. */
+      input::-ms-reveal,
+      input::-ms-clear {
+        display: none;
+      }
+      input[id^="auth-"]:focus {
+        outline: none;
+      }
       /* These styles make the root element full-height */
       #root {
         display: flex;

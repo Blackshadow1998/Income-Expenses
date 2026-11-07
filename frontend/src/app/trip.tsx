@@ -212,6 +212,11 @@ function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number,
               scaleTo={0.98}
               style={styles.row}
             >
+              {!!b.image_url && (
+                <PressScale onPress={() => Linking.openURL(api.tripBillImageUrl(b))} accessibilityLabel="ดูรูปบิล">
+                  <Image source={{ uri: api.tripBillImageUrl(b) }} style={styles.thumb} />
+                </PressScale>
+              )}
               <View style={{ flex: 1, gap: 3 }}>
                 <Text style={styles.name} numberOfLines={1}>{b.title}</Text>
                 <Text style={styles.hint}>

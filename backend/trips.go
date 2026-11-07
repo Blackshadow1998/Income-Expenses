@@ -42,6 +42,7 @@ type TripBill struct {
 	PayerID   int64          `json:"payer_id"`
 	SplitMode string         `json:"split_mode"`
 	Date      string         `json:"date"`
+	ImageURL  string         `json:"image_url"` // signed link to the bill's photo, '' without one
 	Parts     []TripBillPart `json:"parts"`
 }
 
@@ -121,7 +122,7 @@ func (a *API) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
 	rows.Close()
 
 	rows, err = a.db.QueryContext(ctx, `
-		SELECT b.id, b.title, b.amount_satang, b.payer_id, b.split_mode, b.bill_date, p.member_id, p.value
+		SELECT b.id, b.title, b.amount_satang, b.payer_id, b.split_mode, b.bill_date, b.image_file, p.member_id, p.value
 		FROM trip_bills b JOIN trip_bill_parts p ON p.bill_id = b.id
 		WHERE b.trip_id = ? ORDER BY b.bill_date DESC, b.id DESC, p.sort_order`, id)
 	if err != nil {
@@ -132,12 +133,16 @@ func (a *API) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
 	for rows.Next() {
 		var b TripBill
 		var amount, member, value int64
-		if err := rows.Scan(&b.ID, &b.Title, &amount, &b.PayerID, &b.SplitMode, &b.Date, &member, &value); err != nil {
+		var image string
+		if err := rows.Scan(&b.ID, &b.Title, &amount, &b.PayerID, &b.SplitMode, &b.Date, &image, &member, &value); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		if n := len(t.Bills); n == 0 || t.Bills[n-1].ID != b.ID {
 			b.Amount = fromSatang(amount)
+			if image != "" {
+				b.ImageURL = a.tripImageURL(billImage, b.ID)
+			}
 			t.Bills = append(t.Bills, b)
 			t.bills = append(t.bills, split.Bill{Payer: b.PayerID, Amount: amount, Mode: b.SplitMode})
 			amounts = append(amounts, amount)
@@ -182,7 +187,7 @@ func (a *API) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
 		p.Amount = fromSatang(amount)
 		p.Confirmed = p.ConfirmedAt != ""
 		if slip != "" {
-			p.SlipURL = a.tripSlipURL(p.ID)
+			p.SlipURL = a.tripImageURL(paymentSlip, p.ID)
 		}
 		t.Payments = append(t.Payments, p)
 		t.payments = append(t.payments, split.Payment{From: p.From, To: p.To, Amount: amount})
@@ -332,11 +337,17 @@ func (a *API) deleteTrip(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	files, err := a.tripSlipFiles(r.Context(), `trip_id = ?`, id)
+	files, err := a.tripFiles(r.Context(), paymentSlip, `trip_id = ?`, id)
 	if err != nil {
 		serverError(w, err)
 		return
 	}
+	billFiles, err := a.tripFiles(r.Context(), billImage, `trip_id = ?`, id)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	files = append(files, billFiles...)
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		serverError(w, err)
@@ -659,9 +670,17 @@ func (a *API) deleteTripBill(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	files, err := a.tripFiles(r.Context(), billImage, `id = ?`, id)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	if _, err := a.db.ExecContext(r.Context(), `DELETE FROM trip_bills WHERE id = ?`, id); err != nil {
 		serverError(w, err)
 		return
+	}
+	for _, f := range files {
+		a.removeSlipFile(f)
 	}
 	a.respondTrip(w, r, tripID, http.StatusOK)
 }
@@ -807,26 +826,37 @@ func (a *API) tripMembersOK(ctx context.Context, tripID, from, to int64) (bool, 
 	return n == 2, err
 }
 
-// saveTripSlip stores an uploaded slip image next to the bank slips (so backups include it).
-func (a *API) saveTripSlip(r *http.Request) (string, error) {
-	f, _, err := r.FormFile("slip")
+// readTripImage reads an uploaded image (form field `field`) with its file extension; nil data when
+// the field wasn't sent.
+func readTripImage(r *http.Request, field string) ([]byte, string, error) {
+	f, _, err := r.FormFile(field)
 	if errors.Is(err, http.ErrMissingFile) {
-		return "", nil
+		return nil, "", nil
 	}
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxTripSlipBytes+1))
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	if len(data) > maxTripSlipBytes {
-		return "", errors.New("ไฟล์สลิปใหญ่เกิน 10MB")
+		return nil, "", errors.New("ไฟล์รูปใหญ่เกิน 10MB")
 	}
 	ext := map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[http.DetectContentType(data)]
 	if ext == "" {
-		return "", errors.New("รองรับเฉพาะรูป PNG, JPG หรือ WEBP")
+		return nil, "", errors.New("รองรับเฉพาะรูป PNG, JPG หรือ WEBP")
+	}
+	return data, ext, nil
+}
+
+// saveTripImage stores an uploaded image (form field `field`) next to the bank slips, so backups
+// include it; ” when the field wasn't sent.
+func (a *API) saveTripImage(r *http.Request, field string) (string, error) {
+	data, ext, err := readTripImage(r, field)
+	if data == nil || err != nil {
+		return "", err
 	}
 	rnd := make([]byte, 12)
 	if _, err := rand.Read(rnd); err != nil {
@@ -878,7 +908,7 @@ func (a *API) createTripPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	note := strings.TrimSpace(r.FormValue("note"))
-	slip, err := a.saveTripSlip(r)
+	slip, err := a.saveTripImage(r, "slip")
 	if err != nil {
 		badRequest(w, err.Error())
 		return
@@ -969,7 +999,7 @@ func (a *API) deleteTripPayment(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	files, err := a.tripSlipFiles(r.Context(), `id = ?`, id)
+	files, err := a.tripFiles(r.Context(), paymentSlip, `id = ?`, id)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -984,8 +1014,18 @@ func (a *API) deleteTripPayment(w http.ResponseWriter, r *http.Request) {
 	a.respondTrip(w, r, tripID, http.StatusOK)
 }
 
-func (a *API) tripSlipFiles(ctx context.Context, where string, arg int64) ([]string, error) {
-	rows, err := a.db.QueryContext(ctx, `SELECT slip_file FROM trip_payments WHERE slip_file <> '' AND `+where, arg)
+// tripImage is a kind of trip picture: a payment's slip or a bill's photo.
+type tripImage struct {
+	table, column, path, sig string
+}
+
+var (
+	paymentSlip = tripImage{"trip_payments", "slip_file", "/api/trip-payments/%d/slip", "trip"}
+	billImage   = tripImage{"trip_bills", "image_file", "/api/trip-bills/%d/image", "tripbill"}
+)
+
+func (a *API) tripFiles(ctx context.Context, k tripImage, where string, arg int64) ([]string, error) {
+	rows, err := a.db.QueryContext(ctx, `SELECT `+k.column+` FROM `+k.table+` WHERE `+k.column+` <> '' AND `+where, arg)
 	if err != nil {
 		return nil, err
 	}
@@ -1001,32 +1041,39 @@ func (a *API) tripSlipFiles(ctx context.Context, where string, arg int64) ([]str
 	return out, rows.Err()
 }
 
-// tripSlipURL is a signed, short-lived link to a payment's slip (like slipImageURL, but its own
-// signature space so a bank-slip link can't open a payment slip with the same id).
-func (a *API) tripSlipURL(id int64) string {
+// tripImageURL is a signed, short-lived link to a trip picture (like slipImageURL, but each kind
+// has its own signature space so a bank-slip link can't open a payment slip or bill with the same id).
+func (a *API) tripImageURL(k tripImage, id int64) string {
 	exp := time.Now().Truncate(time.Hour).Add(2 * time.Hour).Unix()
-	return fmt.Sprintf("/api/trip-payments/%d/slip?exp=%d&sig=%s", id, exp, a.signTripSlip(id, exp))
+	return fmt.Sprintf(k.path+"?exp=%d&sig=%s", id, exp, a.signTripImage(k, id, exp))
 }
 
-func (a *API) signTripSlip(id, exp int64) string {
+func (a *API) signTripImage(k tripImage, id, exp int64) string {
 	m := hmac.New(sha256.New, a.imageKey)
-	fmt.Fprintf(m, "trip.%d.%d", id, exp)
+	fmt.Fprintf(m, "%s.%d.%d", k.sig, id, exp)
 	return hex.EncodeToString(m.Sum(nil))
 }
 
 func (a *API) tripSlipImage(w http.ResponseWriter, r *http.Request) {
+	a.serveTripImage(w, r, paymentSlip)
+}
+func (a *API) tripBillImage(w http.ResponseWriter, r *http.Request) {
+	a.serveTripImage(w, r, billImage)
+}
+
+func (a *API) serveTripImage(w http.ResponseWriter, r *http.Request, k tripImage) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
 	exp, err := strconv.ParseInt(r.URL.Query().Get("exp"), 10, 64)
 	if err != nil || time.Now().Unix() > exp ||
-		!hmac.Equal([]byte(r.URL.Query().Get("sig")), []byte(a.signTripSlip(id, exp))) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "ลิงก์รูปสลิปหมดอายุ กรุณาเปิดหน้าใหม่"})
+		!hmac.Equal([]byte(r.URL.Query().Get("sig")), []byte(a.signTripImage(k, id, exp))) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "ลิงก์รูปหมดอายุ กรุณาเปิดหน้าใหม่"})
 		return
 	}
 	var file string
-	err = a.db.QueryRowContext(r.Context(), `SELECT slip_file FROM trip_payments WHERE id = ?`, id).Scan(&file)
+	err = a.db.QueryRowContext(r.Context(), `SELECT `+k.column+` FROM `+k.table+` WHERE id = ?`, id).Scan(&file)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && file == "") {
 		notFound(w)
 		return
@@ -1037,4 +1084,61 @@ func (a *API) tripSlipImage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeFile(w, r, filepath.Join(a.slipsDir, filepath.Base(file)))
+}
+
+// PUT (multipart, field "image") replaces a bill's photo; DELETE removes it.
+func (a *API) setTripBillImage(w http.ResponseWriter, r *http.Request) {
+	a.setTripImage(w, r, billImage, "image")
+}
+
+// PUT (multipart, field "slip") adds or replaces a payment's slip; DELETE removes it.
+func (a *API) setTripPaymentSlip(w http.ResponseWriter, r *http.Request) {
+	a.setTripImage(w, r, paymentSlip, "slip")
+}
+
+func (a *API) setTripImage(w http.ResponseWriter, r *http.Request, k tripImage, field string) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	tripID, err := a.tripOf(r.Context(), userID(r), k.table, id)
+	if err != nil || tripID == 0 {
+		if err != nil {
+			serverError(w, err)
+		} else {
+			notFound(w)
+		}
+		return
+	}
+	file := ""
+	if r.Method == http.MethodPut {
+		r.Body = http.MaxBytesReader(w, r.Body, maxTripSlipBytes+1<<20)
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			badRequest(w, "ส่งรูปแบบ multipart/form-data (ไม่เกิน 10MB)")
+			return
+		}
+		if file, err = a.saveTripImage(r, field); err != nil {
+			badRequest(w, err.Error())
+			return
+		}
+		if file == "" {
+			badRequest(w, "กรุณาเลือกรูป")
+			return
+		}
+	}
+	old, err := a.tripFiles(r.Context(), k, `id = ?`, id)
+	if err != nil {
+		a.removeSlipFile(file)
+		serverError(w, err)
+		return
+	}
+	if _, err := a.db.ExecContext(r.Context(), `UPDATE `+k.table+` SET `+k.column+` = ? WHERE id = ?`, file, id); err != nil {
+		a.removeSlipFile(file)
+		serverError(w, err)
+		return
+	}
+	for _, f := range old {
+		a.removeSlipFile(f)
+	}
+	a.respondTrip(w, r, tripID, http.StatusOK)
 }

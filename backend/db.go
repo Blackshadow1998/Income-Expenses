@@ -348,6 +348,10 @@ func migrate(db *sql.DB) error {
 	if err := addColumnIfMissing(db, "slips", "transfer_id", "INTEGER REFERENCES transfers(id)"); err != nil {
 		return err
 	}
+	// A photo of a trip bill (file in the slips directory, like payment slips).
+	if err := addColumnIfMissing(db, "trip_bills", "image_file", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := upgradeSubcategories(db); err != nil {
 		return fmt.Errorf("upgrade subcategories: %w", err)
 	}

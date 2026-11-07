@@ -140,7 +140,10 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 - **เศษสตางค์**: หารไม่ลงตัว เศษให้ผู้จ่ายบิล (ถ้าอยู่ในคนหาร) ไม่งั้นให้คนแรกในรายชื่อ — รวมแล้วตรงยอดบิลเสมอ
 - **สรุปยอด** 2 แบบ: **รายคู่** (หักลบหนี้ของแต่ละคู่) หรือ **ลดจำนวนการโอน** (ลูกหนี้รายใหญ่สุดโอนให้เจ้าหนี้รายใหญ่สุดก่อน)
   + การ์ดต่อคน (ต้องรับ / ต้องจ่าย / ยอดสุทธิ), แถบความคืบหน้าการเก็บเงิน, ปุ่ม **คัดลอกสรุป** ไปวางในไลน์
-- **การจ่ายเงิน**: กด "จ่ายแล้ว" ที่คู่ไหนก็ได้ (จ่ายบางส่วนได้) แนบสลิป PNG/JPG/WEBP ≤ 10MB, ผู้รับกดยืนยันได้, แก้/ลบได้
+- **รูปบิล**: ถ่าย/เลือกรูปใบเสร็จ แอปอ่านรายการ + ยอดสุทธิด้วย Tesseract ในเครื่อง แล้วแตะรายการที่จะหาร
+  (เลือกได้หลายรายการ) เพื่อกรอกชื่อและยอดให้ — อ่านอาจผิด ต้องตรวจก่อนบันทึก; รูปแนบไว้กับบิล เปลี่ยน/เอาออกได้
+- **การจ่ายเงิน**: กด "จ่ายแล้ว" ที่คู่ไหนก็ได้ (จ่ายบางส่วนได้) ถ่าย/แนบสลิป PNG/JPG/WEBP ≤ 10MB (อ่านจำนวนเงิน + วันที่
+  มากรอกให้), แนบ/เปลี่ยน/เอาสลิปออกตอนแก้ไขได้, ผู้รับกดยืนยันได้, แก้/ลบได้
   สถานะคู่: ยังไม่จ่าย / จ่ายบางส่วน / จ่ายครบ
 - ยอดทุกอย่างคำนวณใหม่จากบิลและการจ่ายทุกครั้ง (ไม่เก็บยอดซ้ำ); เงินเป็นสตางค์ (int64) ไม่ใช้ทศนิยม
 - ตรรกะคำนวณอยู่ใน `backend/split` (แยกจาก HTTP/DB) — `go test ./split`; ฝั่งหน้าบ้าน `cd frontend && npm test`
@@ -199,9 +202,13 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | DELETE | `/api/trips/{id}/members/{member}` | ลบสมาชิก (409 ถ้ามีบิลหรือการจ่ายอ้างถึง) |
 | GET/POST | `/api/trips/{id}/bills` | บิล / เพิ่ม `{title, amount, payer_id, split_mode: equal\|amount\|ratio, date, parts: [{member_id, value}]}` |
 | PUT/DELETE | `/api/bills/{id}` | แก้ / ลบ บิล |
+| PUT/DELETE | `/api/bills/{id}/image` | แนบ/เปลี่ยนรูปบิล (multipart ไฟล์ `image`) / เอารูปออก |
+| GET | `/api/trip-bills/{id}/image?exp=&sig=` | รูปบิล (ลิงก์ลงลายเซ็นจาก `image_url`) |
+| POST | `/api/trip-ocr` | อ่านรูป (multipart `image`, `kind=receipt\|slip`) → `{date, amount, items: [{name, amount}]}` ไม่เก็บอะไร |
 | GET | `/api/trips/{id}/summary?mode=pairwise\|minimal` | สรุปยอด: `pairs`, `transfers` (minimal), `people`, `progress` |
 | GET/POST | `/api/trips/{id}/payments` | ประวัติ / บันทึกการจ่าย (multipart: `from_member, to_member, amount, date, note` + ไฟล์ `slip`) |
 | PATCH/DELETE | `/api/payments/{id}` | ยืนยันรับ `{confirmed}` หรือแก้ `{amount, date, note}` / ยกเลิกการจ่าย |
+| PUT/DELETE | `/api/payments/{id}/slip` | แนบ/เปลี่ยนสลิปภายหลัง (multipart ไฟล์ `slip`) / เอาสลิปออก |
 | GET | `/api/trip-payments/{id}/slip?exp=&sig=` | รูปสลิปการจ่าย (ลิงก์ลงลายเซ็นจาก `slip_url`) |
 
 `/api/transactions`, `/api/summary/yearly`, `/api/balance` รับ `account_id=` เพื่อกรองเฉพาะบัญชีได้

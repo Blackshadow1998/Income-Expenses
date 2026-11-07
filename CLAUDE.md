@@ -48,7 +48,9 @@ cd frontend && npx expo start --web --port 8081                                #
 - Trip bill splitting (`trips.go`, screens `(tabs)/trips.tsx`, `trip.tsx`, `trip-bill.tsx`, `trip-payment.tsx`): members are
   names, not users; all maths is in package `backend/split` (int64 satang, leftover satang to the payer if sharing else
   the first listed; pairwise netting and greedy "minimal" transfers). Balances are never stored — always computed from
-  `trip_bills`/`trip_bill_parts` minus `trip_payments`. Payment slips live in the slips dir as `trip-*` files (backed up).
+  `trip_bills`/`trip_bill_parts` minus `trip_payments`. Payment slips and bill photos (`trip_bills.image_file`) live in
+  the slips dir as `trip-*` files (backed up); each kind has its own link signature (`tripImage` in trips.go).
+  `trip_ocr.go` reads a receipt (items + total) or slip for the form only — it never stores or auto-saves anything.
   `frontend/src/tripSplit.ts` mirrors the share rule for the form preview (`npm test` runs its tests with Node).
 - The "รายรับรายจ่าย" tab is `index` (month) + hidden `yearly` route, switched by `PeriodSwitch`; the tab bar takes
   glyphs + aliases (`makeSpotlightTabBar`).

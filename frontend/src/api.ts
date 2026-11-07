@@ -155,7 +155,15 @@ export interface TripBill {
   payer_id: number;
   split_mode: SplitMode;
   date: string;
+  image_url: string; // signed, short-lived link to the bill's photo; '' without one
   parts: { member_id: number; value: number; share: number }[]; // value: baht ('amount') or weight ('ratio')
+}
+
+/** What local OCR read from a receipt (items + total) or a payment slip (amount only). */
+export interface TripOCR {
+  date: string; // '' if not found
+  amount: number; // receipt total or slip amount, 0 if not found
+  items: { name: string; amount: number }[];
 }
 
 export interface TripBillInput {
@@ -446,6 +454,18 @@ export async function downloadCsv(from = '', to = '') {
 
 const post = (body?: unknown): RequestInit => ({ method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 
+/** Adds a picked image to a form: a File on web, React Native's { uri, name, type } descriptor elsewhere. */
+function appendImage(form: FormData, field: string, a: ImagePickerAsset) {
+  if (Platform.OS === 'web' && a.file) form.append(field, a.file, a.fileName ?? a.file.name);
+  else form.append(field, { uri: a.uri, name: a.fileName ?? 'image.jpg', type: a.mimeType ?? 'image/jpeg' } as unknown as Blob);
+}
+
+function imageForm(field: string, a: ImagePickerAsset) {
+  const form = new FormData();
+  appendImage(form, field, a);
+  return form;
+}
+
 export const api = {
   auth: {
     signup: (body: { name: string; email: string; username: string; password: string }) =>
@@ -574,14 +594,26 @@ export const api = {
   ) => {
     const form = new FormData();
     for (const [k, v] of Object.entries(p)) form.append(k, String(v));
-    if (slip) {
-      if (Platform.OS === 'web' && slip.file) form.append('slip', slip.file, slip.fileName ?? slip.file.name);
-      else form.append('slip', { uri: slip.uri, name: slip.fileName ?? 'slip.jpg', type: slip.mimeType ?? 'image/jpeg' } as unknown as Blob);
-    }
+    if (slip) appendImage(form, 'slip', slip);
     return request<Trip>(`/trips/${tripId}/payments`, { method: 'POST', body: form });
   },
   updateTripPayment: (id: number, patch: { confirmed?: boolean; amount?: number; date?: string; note?: string }) =>
     request<Trip>(`/payments/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   removeTripPayment: (id: number) => request<Trip>(`/payments/${id}`, { method: 'DELETE' }),
   tripSlipUrl: (p: TripPayment) => `${API_URL}${p.slip_url}`,
+  /** Adds or replaces a payment's slip (null removes it). */
+  setTripPaymentSlip: (id: number, slip: ImagePickerAsset | null) =>
+    slip ? request<Trip>(`/payments/${id}/slip`, { method: 'PUT', body: imageForm('slip', slip) })
+      : request<Trip>(`/payments/${id}/slip`, { method: 'DELETE' }),
+  /** Adds or replaces a bill's photo (null removes it). */
+  setTripBillImage: (id: number, image: ImagePickerAsset | null) =>
+    image ? request<Trip>(`/bills/${id}/image`, { method: 'PUT', body: imageForm('image', image) })
+      : request<Trip>(`/bills/${id}/image`, { method: 'DELETE' }),
+  tripBillImageUrl: (b: TripBill) => `${API_URL}${b.image_url}`,
+  /** Reads a receipt or payment slip on the server (local Tesseract); nothing is stored. */
+  tripOCR: (image: ImagePickerAsset, kind: 'receipt' | 'slip') => {
+    const form = imageForm('image', image);
+    form.append('kind', kind);
+    return request<TripOCR>('/trip-ocr', { method: 'POST', body: form });
+  },
 };

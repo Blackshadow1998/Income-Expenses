@@ -8,8 +8,31 @@ import (
 	"image/png"
 	"mime/multipart"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// putImage uploads a small PNG as multipart field `field` with PUT.
+func putImage(t *testing.T, c testClient, token, path, field string) (int, map[string]any) {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile(field, "image.png")
+	_ = png.Encode(fw, image.NewRGBA(image.Rect(0, 0, 4, 4)))
+	mw.Close()
+	req, _ := http.NewRequest("PUT", c.srv.URL+path, &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	out := map[string]any{}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out
+}
 
 // postPayment sends a multipart payment, optionally with a small PNG as the slip.
 func postPayment(t *testing.T, c testClient, token string, tripID int64, fields map[string]string, withSlip bool) (int, map[string]any) {
@@ -38,7 +61,8 @@ func postPayment(t *testing.T, c testClient, token string, tripID int64, fields 
 }
 
 func TestTripSplitAPI(t *testing.T) {
-	c, _ := newTestServer(t)
+	var dir string
+	c, _ := newTestServer(t, func(a *API) { dir = a.slipsDir })
 	owner := c.signedIn("owner")
 
 	status, trip := c.do("POST", "/api/trips", owner, map[string]any{"name": "เที่ยวเชียงใหม่", "members": []string{"A", "B", "C", "D", "E", "A"}})
@@ -89,6 +113,39 @@ func TestTripSplitAPI(t *testing.T) {
 			extra = b.(map[string]any)["id"].(float64)
 		}
 	}
+	// A bill photo: attach, open by its signed link, replace, remove; deleting the bill removes it.
+	billImg := fmt.Sprintf("/api/bills/%.0f/image", extra)
+	imageOf := func(out map[string]any) string {
+		for _, b := range out["bills"].([]any) {
+			if b.(map[string]any)["id"] == extra {
+				return b.(map[string]any)["image_url"].(string)
+			}
+		}
+		return "?"
+	}
+	status, out = putImage(t, c, owner, billImg, "image")
+	if status != http.StatusOK || imageOf(out) == "" {
+		t.Fatalf("bill image: %d %v", status, out)
+	}
+	files := func() int {
+		m, _ := filepath.Glob(filepath.Join(dir, "trip-*"))
+		return len(m)
+	}
+	res, err := http.Get(c.srv.URL + imageOf(out))
+	if err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("open bill image: %v %v", err, res)
+	}
+	res.Body.Close()
+	if res, _ := http.Get(c.srv.URL + strings.NewReplacer("trip-bills", "trip-payments", "/image", "/slip").Replace(imageOf(out))); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("bill link opened as a payment slip: %d", res.StatusCode)
+	}
+	if status, _ := putImage(t, c, c.signedIn("stranger"), billImg, "image"); status != http.StatusNotFound {
+		t.Fatalf("other user's bill image: %d", status)
+	}
+	if status, out = c.do("DELETE", billImg, owner, nil); status != http.StatusOK || imageOf(out) != "" || files() != 0 {
+		t.Fatalf("remove bill image: %d %v", status, out)
+	}
+	putImage(t, c, owner, billImg, "image")
 	if status, _ := c.do("DELETE", fmt.Sprintf("/api/bills/%.0f", extra), owner, nil); status != http.StatusOK {
 		t.Fatalf("delete bill: %d", status)
 	}
@@ -134,7 +191,7 @@ func TestTripSplitAPI(t *testing.T) {
 	if pay["slip_url"] == "" || pay["confirmed"] != false {
 		t.Fatalf("payment: %v", pay)
 	}
-	res, err := http.Get(c.srv.URL + pay["slip_url"].(string))
+	res, err = http.Get(c.srv.URL + pay["slip_url"].(string))
 	if err != nil || res.StatusCode != http.StatusOK {
 		t.Fatalf("slip image: %v %v", err, res)
 	}
@@ -155,7 +212,17 @@ func TestTripSplitAPI(t *testing.T) {
 		"from_member": fmt.Sprint(ids["D"]), "to_member": fmt.Sprint(ids["D"]), "amount": "1", "date": "2026-11-05"}, false); status != http.StatusBadRequest {
 		t.Fatalf("paying oneself: %d", status)
 	}
-	if status, _ := c.do("DELETE", payPath, owner, nil); status != http.StatusOK {
+	// The slip can be removed and attached again later (replacing doesn't leave the old file behind).
+	if status, out := c.do("DELETE", payPath+"/slip", owner, nil); status != http.StatusOK ||
+		out["payments"].([]any)[0].(map[string]any)["slip_url"] != "" || files() != 0 {
+		t.Fatalf("remove slip: %d %v", status, out)
+	}
+	putImage(t, c, owner, payPath+"/slip", "slip")
+	if status, out := putImage(t, c, owner, payPath+"/slip", "slip"); status != http.StatusOK ||
+		out["payments"].([]any)[0].(map[string]any)["slip_url"] == "" || files() != 1 {
+		t.Fatalf("replace slip: %d %v (files %d)", status, out, files())
+	}
+	if status, _ := c.do("DELETE", payPath, owner, nil); status != http.StatusOK || files() != 0 {
 		t.Fatalf("delete payment: %d", status)
 	}
 	if pairs, _ := pairText("pairwise"); pairs["D>A"] != 258.33 {

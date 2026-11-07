@@ -1,8 +1,10 @@
+import type { ImagePickerAsset } from 'expo-image-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { api, SplitMode, Trip } from '@/api';
+import { api, SplitMode, Trip, TripOCR } from '@/api';
 import { PressScale } from '@/components/motion';
+import { PhotoField } from '@/components/PhotoField';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, confirmAsync, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
 import { bahtText, shares, toSatang } from '@/tripSplit';
@@ -28,6 +30,13 @@ export default function TripBillScreen() {
   const [chosen, setChosen] = useState<number[]>([]); // members sharing, in member order
   const [values, setValues] = useState<Record<number, string>>({}); // baht or weight per member
   const [saving, setSaving] = useState(false);
+  // Photo: a newly picked one, or the saved one (savedImage) unless removed.
+  const [image, setImage] = useState<ImagePickerAsset | null>(null);
+  const [savedImage, setSavedImage] = useState('');
+  const [reading, setReading] = useState(false);
+  const [ocr, setOcr] = useState<TripOCR | null>(null);
+  const [picked, setPicked] = useState<number[]>([]); // receipt items tapped (-1 = the total)
+  const [autoTitle, setAutoTitle] = useState(''); // the title last filled from items, replaced on the next tap
 
   const load = async () => {
     setError(null);
@@ -43,6 +52,7 @@ export default function TripBillScreen() {
         setMode(b.split_mode);
         setChosen(t.members.map((m) => m.id).filter((id) => b.parts.some((p) => p.member_id === id)));
         setValues(Object.fromEntries(b.parts.map((p) => [p.member_id, b.split_mode === 'equal' ? '' : String(p.value)])));
+        setSavedImage(b.image_url ? api.tripBillImageUrl(b) : '');
       } else {
         setPayer(t.members[0]?.id ?? null);
         setChosen(t.members.map((m) => m.id)); // everyone shares by default
@@ -57,8 +67,39 @@ export default function TripBillScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId, billId]);
 
+  // A new photo is read on the server; its items can then be tapped to fill the title and amount.
+  const onPhoto = async (a: ImagePickerAsset) => {
+    setImage(a);
+    setOcr(null);
+    setPicked([]);
+    setReading(true);
+    try {
+      const r = await api.tripOCR(a, 'receipt');
+      setOcr(r);
+      if (!billId && r.date) setDate(r.date);
+    } catch {
+      setOcr({ date: '', amount: 0, items: [] });
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const pickItem = (i: number) => {
+    if (!ocr) return;
+    const next = i === -1 ? (picked.includes(-1) ? [] : [-1]) : picked.includes(i) ? picked.filter((x) => x !== i) : [...picked.filter((x) => x !== -1), i];
+    setPicked(next);
+    const items = next.filter((x) => x >= 0).map((x) => ocr.items[x]);
+    const sum = next.includes(-1) ? ocr.amount : items.reduce((s, it) => s + it.amount, 0);
+    setAmountText(sum > 0 ? String(Math.round(sum * 100) / 100) : '');
+    if (!title.trim() || title === autoTitle) {
+      const t = items.map((it) => it.name).join(' + ').slice(0, 80);
+      setTitle(t);
+      setAutoTitle(t);
+    }
+  };
+
   const amount = toSatang(amountText);
-  const toggle = (id: number) =>
+  const toggle =(id: number) =>
     setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : trip!.members.map((m) => m.id).filter((m) => m === id || c.includes(m))));
   const value = (id: number) => (mode === 'amount' ? toSatang(values[id] ?? '') : Number(values[id] || (mode === 'ratio' ? 1 : 0)));
   const preview =
@@ -82,15 +123,22 @@ export default function TripBillScreen() {
       parts: chosen.map((m) => ({ member_id: m, value: mode === 'amount' ? value(m) / 100 : mode === 'ratio' ? value(m) : 0 })),
     };
     setSaving(true);
+    let id = billId;
     try {
       if (billId) await api.updateTripBill(billId, body);
-      else await api.createTripBill(tripId, body);
-      router.back();
+      else id = Math.max(...(await api.createTripBill(tripId, body)).bills.map((b) => b.id)); // the new bill
     } catch (e) {
-      showError(e);
-    } finally {
       setSaving(false);
+      return showError(e);
     }
+    try {
+      if (image) await api.setTripBillImage(id!, image);
+      else if (billId && !savedImage && trip?.bills.find((b) => b.id === billId)?.image_url) await api.setTripBillImage(billId, null);
+    } catch (e) {
+      showError(new Error(`บันทึกบิลแล้ว แต่แนบรูปไม่สำเร็จ: ${(e as Error).message}`));
+    }
+    setSaving(false);
+    router.back();
   };
 
   const remove = async () => {
@@ -111,6 +159,39 @@ export default function TripBillScreen() {
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: screenTitle }} />
       <Card style={{ gap: 14 }}>
+        <Field label="รูปบิล (ไม่บังคับ)">
+          <PhotoField
+            uri={image?.uri ?? (savedImage || null)}
+            onPick={onPhoto}
+            onRemove={() => {
+              setImage(null);
+              setSavedImage('');
+              setOcr(null);
+              setPicked([]);
+            }}
+            busy={reading}
+            emptyLabel="ถ่ายบิล"
+          />
+          {ocr && (ocr.items.length > 0 || ocr.amount > 0) ? (
+            <View style={styles.preview}>
+              <Text style={styles.hint}>อ่านจากรูป (อาจผิด ตรวจก่อนบันทึก) · แตะรายการที่จะหาร เลือกได้หลายรายการ</Text>
+              {ocr.items.map((it, i) => (
+                <PressScale key={i} onPress={() => pickItem(i)} style={[styles.ocrRow, picked.includes(i) && styles.checkOn]} accessibilityRole="checkbox" accessibilityState={{ checked: picked.includes(i) }}>
+                  <Text style={[styles.chipText, { flex: 1 }]} numberOfLines={1}>{picked.includes(i) ? '☑' : '☐'} {it.name}</Text>
+                  <Text style={styles.share}>{money(it.amount)}</Text>
+                </PressScale>
+              ))}
+              {ocr.amount > 0 && (
+                <PressScale onPress={() => pickItem(-1)} style={[styles.ocrRow, picked.includes(-1) && styles.checkOn]} accessibilityRole="checkbox" accessibilityState={{ checked: picked.includes(-1) }}>
+                  <Text style={[styles.chipText, { flex: 1 }]}>{picked.includes(-1) ? '☑' : '☐'} ทั้งบิล (ยอดสุทธิ)</Text>
+                  <Text style={styles.share}>{money(ocr.amount)}</Text>
+                </PressScale>
+              )}
+            </View>
+          ) : (
+            ocr && <Text style={styles.hint}>อ่านรายการจากรูปไม่ได้ กรอกเองได้เลย (รูปยังแนบไว้)</Text>
+          )}
+        </Field>
         <Field label="รายการ">
           <TextInput value={title} onChangeText={setTitle} maxLength={80} placeholder="เช่น ที่พัก, ค่ารถ, ข้าวเย็น" placeholderTextColor={COLORS.muted} style={styles.input} />
         </Field>
@@ -254,6 +335,7 @@ const styles = StyleSheet.create({
   segText: { fontWeight: '700', color: COLORS.muted, fontSize: 13 },
   preview: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: COLORS.subtle },
   previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ocrRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
   name: { fontWeight: '700', color: COLORS.text },
   valueInput: { width: 90, paddingVertical: 6, textAlign: 'right' },
   share: { width: 90, textAlign: 'right', fontWeight: '800', color: COLORS.text },

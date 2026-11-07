@@ -1,9 +1,10 @@
-import * as ImagePicker from 'expo-image-picker';
+import type { ImagePickerAsset } from 'expo-image-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, Trip } from '@/api';
 import { PressScale } from '@/components/motion';
+import { PhotoField } from '@/components/PhotoField';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, dateLabel, isValidDate, showError, toISODate } from '@/format';
 import { toSatang } from '@/tripSplit';
@@ -23,7 +24,10 @@ export default function TripPaymentScreen() {
   const [amountText, setAmountText] = useState(params.amount && Number(params.amount) > 0 ? params.amount : '');
   const [date, setDate] = useState(toISODate(new Date()));
   const [note, setNote] = useState('');
-  const [slip, setSlip] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [slip, setSlip] = useState<ImagePickerAsset | null>(null);
+  const [savedSlip, setSavedSlip] = useState(''); // the payment's saved slip, unless removed
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState('');
   const [saving, setSaving] = useState(false);
   const due = params.amount ? Number(params.amount) : 0;
 
@@ -39,6 +43,7 @@ export default function TripPaymentScreen() {
         setAmountText(String(p.amount));
         setDate(p.date);
         setNote(p.note);
+        setSavedSlip(p.slip_url ? api.tripSlipUrl(p) : '');
       }
     } catch (e) {
       setError((e as Error).message);
@@ -50,9 +55,23 @@ export default function TripPaymentScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId, paymentId]);
 
-  const pickSlip = async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
-    if (!r.canceled && r.assets?.[0]) setSlip(r.assets[0]);
+  // A new slip is read on the server: its amount and date fill the form (the slip is what was paid).
+  const onSlip = async (a: ImagePickerAsset) => {
+    setSlip(a);
+    setReadNote('');
+    setReading(true);
+    try {
+      const r = await api.tripOCR(a, 'slip');
+      if (r.amount > 0) setAmountText(String(r.amount));
+      if (r.date) setDate(r.date);
+      setReadNote(r.amount > 0 || r.date
+        ? `อ่านจากสลิป: ${r.amount > 0 ? `${r.amount.toFixed(2)} บาท` : 'ไม่พบจำนวนเงิน'}${r.date ? ` · ${dateLabel(r.date)}` : ''} — ตรวจก่อนบันทึก`
+        : 'อ่านสลิปไม่ได้ กรอกเองได้เลย (รูปยังแนบไว้)');
+    } catch {
+      setReadNote('อ่านสลิปไม่ได้ กรอกเองได้เลย (รูปยังแนบไว้)');
+    } finally {
+      setReading(false);
+    }
   };
 
   const amount = toSatang(amountText);
@@ -62,8 +81,11 @@ export default function TripPaymentScreen() {
     if (!isValidDate(date)) return showError(new Error('วันที่ต้องเป็น ปปปป-ดด-วว (ค.ศ.)'));
     setSaving(true);
     try {
-      if (paymentId) await api.updateTripPayment(paymentId, { amount: amount / 100, date, note: note.trim() });
-      else await api.createTripPayment(tripId, { from_member: from, to_member: to, amount: amount / 100, date, note: note.trim() }, slip);
+      if (paymentId) {
+        await api.updateTripPayment(paymentId, { amount: amount / 100, date, note: note.trim() });
+        if (slip) await api.setTripPaymentSlip(paymentId, slip);
+        else if (!savedSlip && trip?.payments.find((p) => p.id === paymentId)?.slip_url) await api.setTripPaymentSlip(paymentId, null);
+      } else await api.createTripPayment(tripId, { from_member: from, to_member: to, amount: amount / 100, date, note: note.trim() }, slip);
       router.back();
     } catch (e) {
       showError(e);
@@ -123,21 +145,20 @@ export default function TripPaymentScreen() {
           <TextInput value={note} onChangeText={setNote} placeholder="เช่น โอนพร้อมเพย์" placeholderTextColor={COLORS.muted} style={styles.input} />
         </Field>
 
-        {!paymentId && (
-          <Field label="สลิป (ไม่บังคับ · PNG/JPG/WEBP ไม่เกิน 10MB)">
-            {slip ? (
-              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                <Image source={{ uri: slip.uri }} style={styles.preview} />
-                <View style={{ gap: 8 }}>
-                  <Button title="เปลี่ยนรูป" variant="soft" small onPress={pickSlip} />
-                  <Button title="เอาออก" variant="outline" small onPress={() => setSlip(null)} />
-                </View>
-              </View>
-            ) : (
-              <Button title="แนบรูปสลิป" icon="📎" variant="soft" onPress={pickSlip} />
-            )}
-          </Field>
-        )}
+        <Field label="สลิป (ไม่บังคับ · PNG/JPG/WEBP ไม่เกิน 10MB)">
+          <PhotoField
+            uri={slip?.uri ?? (savedSlip || null)}
+            onPick={onSlip}
+            onRemove={() => {
+              setSlip(null);
+              setSavedSlip('');
+              setReadNote('');
+            }}
+            busy={reading}
+            emptyLabel="ถ่ายสลิป"
+          />
+          {!!readNote && <Text style={styles.hint}>{readNote}</Text>}
+        </Field>
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => router.back()} />
@@ -165,6 +186,4 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, borderColor: COLORS.primary },
   chipOn: { backgroundColor: COLORS.primary },
-  chipText: { color: COLORS.primary, fontWeight: '700' },
-  preview: { width: 90, height: 130, borderRadius: 10, backgroundColor: COLORS.subtle },
-});
+  chipText: { color: COLORS.primary, fontWeight: '700' },});

@@ -33,7 +33,10 @@ INSERT OR IGNORE INTO categories (code, name, direction, sort_order) VALUES
 	('income',  'รับ',    1, 1),
 	('expense', 'จ่าย',  -1, 2),
 	('lend',    'ให้ยืม', -1, 3),
-	('borrow',  'กู้',     1, 4);
+	('borrow',  'กู้',     1, 4),
+	-- Repayments, so lending/borrowing nets out per person (see debts.go).
+	('lend_return',  'รับคืนเงินยืม',  1, 5),
+	('borrow_repay', 'คืนเงินกู้',    -1, 6);
 
 ` + subcategoriesTable + `
 

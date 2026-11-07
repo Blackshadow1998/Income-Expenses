@@ -83,6 +83,12 @@ export default function AccountsScreen() {
         </View>
       )}
 
+      <PressScale onPress={() => router.push('/debts')} scaleTo={0.98} style={styles.debtLink}>
+        <Text style={{ fontSize: 18 }}>🤝</Text>
+        <Text style={{ flex: 1, color: COLORS.text, fontWeight: '700' }}>ติดตามหนี้ ให้ยืม / กู้</Text>
+        <Text style={{ color: COLORS.primary, fontSize: 18 }}>›</Text>
+      </PressScale>
+
       <View style={styles.header}>
         <Text style={styles.h2}>บัญชีทั้งหมด</Text>
         <Button title="เพิ่มบัญชี" icon="＋" small onPress={() => router.push('/account')} />
@@ -160,6 +166,16 @@ const styles = StyleSheet.create({
   typeCard: { padding: 14, gap: 4 },
   typeDot: { width: 8, height: 8, borderRadius: 4 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  debtLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
   h2: { fontSize: 18, fontWeight: '800', color: COLORS.text },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   accountCard: {

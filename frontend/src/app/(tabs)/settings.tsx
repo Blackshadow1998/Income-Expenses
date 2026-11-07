@@ -28,6 +28,7 @@ export default function SettingsScreen() {
         <Button title="📋 จัดการรายการ (หมวดย่อย)" variant="outline" onPress={() => router.push('/subcategories')} />
         <Button title="🎯 งบประมาณรายเดือน" variant="outline" onPress={() => router.push('/budgets')} />
         <Button title="🔁 รายการประจำ" variant="outline" onPress={() => router.push('/recurring')} />
+        <Button title="🤝 หนี้ ให้ยืม / กู้" variant="outline" onPress={() => router.push('/debts')} />
       </Card>
 
       <Card style={{ gap: 10 }}>

@@ -56,6 +56,7 @@ function Gate() {
         <Stack.Screen name="subcategories" options={{ title: 'จัดการรายการ' }} />
         <Stack.Screen name="budgets" options={{ title: 'งบประมาณ' }} />
         <Stack.Screen name="recurring" options={{ title: 'รายการประจำ' }} />
+        <Stack.Screen name="debts" options={{ title: 'หนี้ ให้ยืม / กู้' }} />
       </Stack>
       {status === 'needsPin' && (
         <Overlay>

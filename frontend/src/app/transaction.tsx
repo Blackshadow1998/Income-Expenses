@@ -8,7 +8,10 @@ import { CATEGORY_COLORS, COLORS, currentMonth, dateLabel, isValidDate, money, s
 import { getLastAccountId, setLastAccountId, setPendingMonth } from '@/state';
 
 export default function TransactionScreen() {
-  const params = useLocalSearchParams<{ id?: string; month?: string; accountId?: string; slipId?: string }>();
+  // category / payee / amount prefill a new transaction (e.g. "คืนแล้ว" from the debts screen).
+  const params = useLocalSearchParams<{
+    id?: string; month?: string; accountId?: string; slipId?: string; category?: string; payee?: string; amount?: string;
+  }>();
   const editId = params.id ? Number(params.id) : undefined;
   const slipId = !editId && params.slipId ? Number(params.slipId) : undefined;
   const isEdit = !!editId;
@@ -59,7 +62,9 @@ export default function TransactionScreen() {
         setNote(txn.note);
         setPayee(txn.payee);
       } else {
-        setCategoryId((cats.find((c) => c.code === 'expense') ?? cats[0])?.id ?? null);
+        setCategoryId((cats.find((c) => c.code === (params.category ?? 'expense')) ?? cats[0])?.id ?? null);
+        if (params.payee) setPayee(params.payee);
+        if (params.amount) setAmountText(params.amount);
         // From a slip: prefer an account at the bank the slip came from.
         const slipAccount = sl?.bank_id ? accs.accounts.find((a) => a.bank_id === sl.bank_id)?.id : undefined;
         setAccountId(pickDefaultAccount(accs, slipAccount ?? (Number(params.accountId) || getLastAccountId())));

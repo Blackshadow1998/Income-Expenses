@@ -13,8 +13,8 @@ import { setPendingMonth } from '@/state';
 type Mode = 'inout' | 'category';
 
 const IN_OUT: BarSeries[] = [
-  { key: 'in', label: 'เงินเข้า (รับ + กู้)', color: COLORS.in },
-  { key: 'out', label: 'เงินออก (จ่าย + ให้ยืม)', color: COLORS.out },
+  { key: 'in', label: 'เงินเข้า', color: COLORS.in },
+  { key: 'out', label: 'เงินออก', color: COLORS.out },
 ];
 
 export default function YearlyScreen() {

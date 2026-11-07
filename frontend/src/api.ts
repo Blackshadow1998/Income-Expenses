@@ -15,7 +15,19 @@ const DEFAULT_URL =
       : 'http://localhost:8080';
 export const API_URL = process.env.EXPO_PUBLIC_API_URL || DEFAULT_URL;
 
-export type CategoryCode = 'income' | 'expense' | 'lend' | 'borrow';
+export type CategoryCode = 'income' | 'expense' | 'lend' | 'borrow' | 'lend_return' | 'borrow_repay';
+
+/** Outstanding money with one person (transactions' payee): lend − returned, borrow − repaid. */
+export interface Debt {
+  person: string; // '' = no payee recorded
+  lent: number;
+  returned: number;
+  borrowed: number;
+  repaid: number;
+  owed_to_me: number;
+  i_owe: number;
+  last_date: string;
+}
 
 export interface Subcategory {
   id: number;
@@ -311,6 +323,7 @@ export const api = {
   yearly: (year: number, accountId?: number | null) =>
     request<YearData>(`/summary/yearly?year=${year}${accountId ? `&account_id=${accountId}` : ''}`),
 
+  debts: () => request<Debt[]>('/debts'),
   recurring: () => request<Recurring[]>('/recurring'),
   saveRecurring: (id: number | null, body: RecurringInput) =>
     id

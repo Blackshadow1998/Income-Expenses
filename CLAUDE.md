@@ -33,7 +33,8 @@ cd frontend && npx expo start --web --port 8081                                #
 ## Domain rules
 
 - Money is stored as integer **satang** (`amount_satang`); the API speaks baht floats. Convert with `toSatang`/`fromSatang`.
-- Categories: รับ(+1) จ่าย(−1) ให้ยืม(−1) กู้(+1) — `direction` decides the sign. Subcategories ("รายการ") belong to one category.
+- Categories: รับ(+1) จ่าย(−1) ให้ยืม(−1) กู้(+1) รับคืนเงินยืม(+1) คืนเงินกู้(−1) — `direction` decides the sign.
+  Debts (`debts.go`) are derived per payee from the last four; there is no debts table. Subcategories ("รายการ") belong to one category.
 - Transfers (`transfers` table, `transfers.go`) move money between a user's own accounts: they change both account
   balances, cancel out in the all-accounts total, and are never part of in/out totals.
 - Balance = sum of account opening balances + signed transactions (+ transfers for a single account). Transactions saved before accounts existed have `account_id NULL` ("ไม่ระบุบัญชี") and still count in the total.

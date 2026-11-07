@@ -33,7 +33,7 @@ func TestDailyBackupWritesOncePerDayAndPrunes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := copyDB.QueryRow(`SELECT COUNT(*) FROM categories`).Scan(&n); err != nil || n != 4 {
+	if err := copyDB.QueryRow(`SELECT COUNT(*) FROM categories`).Scan(&n); err != nil || n != 6 {
 		t.Fatalf("backup content: %d categories, %v", n, err)
 	}
 	copyDB.Close()

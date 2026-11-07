@@ -15,6 +15,8 @@ export const CATEGORY_COLORS: Record<CategoryCode, string> = {
   expense: '#dc2626',
   lend: '#ea580c',
   borrow: '#2563eb',
+  lend_return: '#0d9488',
+  borrow_repay: '#7c3aed',
 };
 
 export const CATEGORY_ICONS: Record<CategoryCode, string> = {
@@ -22,6 +24,8 @@ export const CATEGORY_ICONS: Record<CategoryCode, string> = {
   expense: '💸',
   lend: '🤝',
   borrow: '🏦',
+  lend_return: '↩️',
+  borrow_repay: '💳',
 };
 
 /** Light backgrounds behind each category's icon. */
@@ -30,6 +34,8 @@ export const CATEGORY_TINTS: Record<CategoryCode, string> = {
   expense: '#fee2e2',
   lend: '#ffedd5',
   borrow: '#dbeafe',
+  lend_return: '#ccfbf1',
+  borrow_repay: '#ede9fe',
 };
 
 /** Gradients for the coloured header cards (expo-linear-gradient colour lists). */

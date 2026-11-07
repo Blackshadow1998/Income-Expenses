@@ -133,7 +133,7 @@ function Chip({ label, active, onPress, color = COLORS.primary }: { label: strin
 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 10, maxWidth: 720, width: '100%', alignSelf: 'center', paddingBottom: 32 },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: COLORS.text, backgroundColor: '#fff' },
+  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: COLORS.text, backgroundColor: COLORS.input },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
   summary: { color: COLORS.muted, fontSize: 13, marginTop: 4 },

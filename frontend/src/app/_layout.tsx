@@ -1,16 +1,22 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/auth';
 import {
   LoadingScreen, OfflineScreen, Overlay, PinLockScreen, PinSetupScreen, SignInScreen,
 } from '@/components/AuthScreens';
-import { COLORS } from '@/format';
+import { COLORS, IS_DARK } from '@/format';
+
+// Behind the app on web (overscroll, browser chrome) match the theme too.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  document.documentElement.style.backgroundColor = COLORS.bg;
+  document.body.style.backgroundColor = COLORS.bg;
+}
 
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <StatusBar style="dark" />
+      <StatusBar style={IS_DARK ? 'light' : 'dark'} />
       <Gate />
     </AuthProvider>
   );

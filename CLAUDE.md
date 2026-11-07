@@ -63,4 +63,6 @@ cd frontend && npx expo start --web --port 8081                                #
 - Git Bash mangles Thai in curl command-line args — send JSON bodies from a UTF-8 file (`--data-binary @file`).
 - Files may have CRLF line endings; prefer the Edit tool over `sed`/string replace for multi-line edits.
 - Node is v20 but Expo SDK 58 wants ≥ 22.13: it runs with a warning.
+- Theme: `COLORS` (format.ts) is the light or dark palette picked once at startup (`themeStore(.web).ts`); never
+  hard-code backgrounds — use `COLORS.card/input/subtle/track/dangerSoft/skeleton`. Changing theme reloads (web).
 - `Alert.alert` is a no-op on react-native-web — use `confirmAsync` / `showInfo` / `showError` from `format.ts`.

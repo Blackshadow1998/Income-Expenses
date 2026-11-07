@@ -186,9 +186,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: COLORS.text,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.input,
   },
-  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: '#fff', overflow: 'hidden' },
+  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.input, overflow: 'hidden' },
   picker: { fontSize: 16, color: COLORS.text, padding: 10, borderWidth: 0, backgroundColor: 'transparent' },
   typeBtn: { borderWidth: 1.5, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14 },
 });

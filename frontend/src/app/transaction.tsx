@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   },
   slipThumb: { width: 80, height: 120, borderRadius: 6, backgroundColor: '#fde68a' },
   slipTitle: { fontWeight: '700', color: COLORS.pending },
-  ocrText: { fontSize: 11, color: COLORS.muted, backgroundColor: '#fff', padding: 8, borderRadius: 6 },
+  ocrText: { fontSize: 11, color: COLORS.muted, backgroundColor: COLORS.input, padding: 8, borderRadius: 6 },
   label: { fontWeight: '700', color: COLORS.text },
   hint: { color: COLORS.muted, fontSize: 13 },
   input: {
@@ -418,13 +418,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: COLORS.text,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.input,
   },
   pickerWrap: {
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 8,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.input,
     overflow: 'hidden',
   },
   picker: { fontSize: 16, color: COLORS.text, padding: 10, borderWidth: 0, backgroundColor: 'transparent' },
@@ -434,7 +434,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: '#f9fafb',
+    backgroundColor: COLORS.subtle,
   },
   catBtn: { borderWidth: 1.5, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14 },
   readonly: {
@@ -444,6 +444,6 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 12,
     borderRadius: 8,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: COLORS.subtle,
   },
 });

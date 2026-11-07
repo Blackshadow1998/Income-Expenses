@@ -1,5 +1,6 @@
 import { forwardRef, ReactNode, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, PressableProps, StyleProp, Text, TextStyle, ViewStyle } from 'react-native';
+import { COLORS } from '../format';
 
 // Small animation helpers on top of React Native's built-in Animated (works on web, iOS and Android).
 const native = Platform.OS !== 'web';
@@ -91,7 +92,7 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
     loop.start();
     return () => loop.stop();
   }, [v]);
-  return <Animated.View style={[{ backgroundColor: '#e5e7eb', borderRadius: 12 }, style, { opacity: v }]} />;
+  return <Animated.View style={[{ backgroundColor: COLORS.skeleton, borderRadius: 12 }, style, { opacity: v }]} />;
 }
 
 /** Bar whose width grows to `fraction` (0–1) of its track. */

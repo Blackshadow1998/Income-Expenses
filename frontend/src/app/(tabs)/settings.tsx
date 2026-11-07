@@ -1,8 +1,15 @@
 import { router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/auth';
+import { PressScale } from '@/components/motion';
 import { Button, Card } from '@/components/ui';
-import { COLORS, confirmAsync } from '@/format';
+import { COLORS, confirmAsync, setThemePref, THEME_PREF, ThemePref } from '@/format';
+
+const THEMES: { key: ThemePref; label: string }[] = [
+  { key: 'system', label: '📱 ตามเครื่อง' },
+  { key: 'light', label: '☀️ สว่าง' },
+  { key: 'dark', label: '🌙 มืด' },
+];
 
 export default function SettingsScreen() {
   const { user, lockNow, signOut } = useAuth();
@@ -29,6 +36,22 @@ export default function SettingsScreen() {
         <Button title="🎯 งบประมาณรายเดือน" variant="outline" onPress={() => router.push('/budgets')} />
         <Button title="🔁 รายการประจำ" variant="outline" onPress={() => router.push('/recurring')} />
         <Button title="🤝 หนี้ ให้ยืม / กู้" variant="outline" onPress={() => router.push('/debts')} />
+      </Card>
+
+      <Card style={{ gap: 10 }}>
+        <Text style={styles.h2}>ธีม</Text>
+        <View style={styles.segment}>
+          {THEMES.map((t) => (
+            <PressScale
+              key={t.key}
+              onPress={() => t.key !== THEME_PREF && setThemePref(t.key)}
+              containerStyle={{ flex: 1 }}
+              style={[styles.segBtn, THEME_PREF === t.key && styles.segBtnActive]}
+            >
+              <Text style={[styles.segText, THEME_PREF === t.key && { color: COLORS.primary }]}>{t.label}</Text>
+            </PressScale>
+          ))}
+        </View>
       </Card>
 
       <Card style={{ gap: 10 }}>
@@ -60,4 +83,8 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   name: { fontSize: 17, fontWeight: '700', color: COLORS.text },
   h2: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  segment: { flexDirection: 'row', backgroundColor: COLORS.track, borderRadius: 12, padding: 3 },
+  segBtn: { paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
+  segBtnActive: { backgroundColor: COLORS.card, boxShadow: '0px 2px 6px rgba(30, 27, 75, 0.15)' },
+  segText: { fontWeight: '700', color: COLORS.muted, fontSize: 13 },
 });

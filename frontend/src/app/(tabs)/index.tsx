@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
   chip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary, ...SHADOW },
   chipText: { color: COLORS.primary, fontWeight: '700' },
-  track: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: '#eef0f6' },
+  track: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: COLORS.track },
   legend: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '50%' },
   actions: { flexDirection: 'row', gap: 10 },
@@ -532,6 +532,6 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   rowSub: { color: COLORS.muted, fontSize: 12 },
   amount: { fontSize: 16, fontWeight: '800' },
-  trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center' },
+  trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.dangerSoft, alignItems: 'center', justifyContent: 'center' },
   pendingHeader: { color: COLORS.pending, fontWeight: '700' },
 });

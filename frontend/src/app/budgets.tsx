@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   h2: { fontSize: 16, fontWeight: '800', color: COLORS.text },
   hint: { color: COLORS.muted, fontSize: 12 },
   catBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 14 },
-  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: '#fff', overflow: 'hidden' },
+  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: COLORS.input, overflow: 'hidden' },
   picker: { fontSize: 16, color: COLORS.text, padding: 10, borderWidth: 0, backgroundColor: 'transparent' },
   input: {
     borderWidth: 1,
@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: COLORS.text,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.input,
   },
   row: {
     flexDirection: 'row',
@@ -177,5 +177,5 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   name: { fontWeight: '700', color: COLORS.text },
-  trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center' },
+  trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.dangerSoft, alignItems: 'center', justifyContent: 'center' },
 });

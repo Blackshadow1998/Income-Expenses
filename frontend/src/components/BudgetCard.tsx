@@ -73,6 +73,6 @@ const styles = StyleSheet.create({
   h3: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   line: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   name: { color: COLORS.text, fontWeight: '600', flex: 1 },
-  track: { height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: '#eef0f6' },
+  track: { height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: COLORS.track },
   sub: { color: COLORS.muted, fontSize: 12 },
 });

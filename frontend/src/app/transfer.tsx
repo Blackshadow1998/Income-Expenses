@@ -261,9 +261,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: COLORS.text,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.input,
   },
-  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: '#fff', overflow: 'hidden' },
+  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: COLORS.input, overflow: 'hidden' },
   picker: { fontSize: 16, color: COLORS.text, padding: 10, borderWidth: 0, backgroundColor: 'transparent' },
   swap: {
     alignSelf: 'center',
@@ -275,5 +275,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginVertical: -6,
   },
-  readonly: { gap: 6, padding: 12, borderRadius: 12, backgroundColor: '#f3f4f6' },
+  readonly: { gap: 6, padding: 12, borderRadius: 12, backgroundColor: COLORS.subtle },
 });

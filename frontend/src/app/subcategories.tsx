@@ -131,7 +131,7 @@ function ItemRow({ item, onChanged }: { item: Subcategory; onChanged: () => Prom
       <PressScale onPress={() => setEditing(true)} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel="แก้ชื่อ">
         <Text style={{ fontSize: 13 }}>✏️</Text>
       </PressScale>
-      <PressScale onPress={remove} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: '#fef2f2' }]} accessibilityLabel="ลบ">
+      <PressScale onPress={remove} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel="ลบ">
         <Text style={{ fontSize: 13 }}>🗑️</Text>
       </PressScale>
     </View>
@@ -162,6 +162,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 15,
     color: COLORS.text,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.input,
   },
 });

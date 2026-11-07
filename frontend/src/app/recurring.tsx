@@ -153,7 +153,7 @@ export default function RecurringScreen() {
                 <PressScale onPress={() => toggle(r)} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel={r.active ? 'หยุด' : 'เปิดใช้'}>
                   <Text style={{ fontSize: 12 }}>{r.active ? '⏸️' : '▶️'}</Text>
                 </PressScale>
-                <PressScale onPress={() => remove(r)} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: '#fef2f2' }]} accessibilityLabel="ลบ">
+                <PressScale onPress={() => remove(r)} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel="ลบ">
                   <Text style={{ fontSize: 12 }}>🗑️</Text>
                 </PressScale>
               </View>
@@ -170,9 +170,9 @@ const styles = StyleSheet.create({
   h2: { fontSize: 16, fontWeight: '800', color: COLORS.text },
   hint: { color: COLORS.muted, fontSize: 12 },
   chip: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12 },
-  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: '#fff', overflow: 'hidden' },
+  pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: COLORS.input, overflow: 'hidden' },
   picker: { fontSize: 16, color: COLORS.text, padding: 10, borderWidth: 0, backgroundColor: 'transparent' },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: COLORS.text, backgroundColor: '#fff' },
+  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: COLORS.text, backgroundColor: COLORS.input },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   name: { fontWeight: '700', color: COLORS.text },
   iconBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.primarySoft, alignItems: 'center', justifyContent: 'center' },

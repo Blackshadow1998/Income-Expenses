@@ -1,5 +1,6 @@
-import { Alert, Platform } from 'react-native';
+import { Alert, Appearance, Platform } from 'react-native';
 import type { CategoryCode } from './api';
+import { loadThemePref, saveThemePref } from './themeStore';
 
 export const MONTHS_FULL = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -28,15 +29,17 @@ export const CATEGORY_ICONS: Record<CategoryCode, string> = {
   borrow_repay: '💳',
 };
 
-/** Light backgrounds behind each category's icon. */
-export const CATEGORY_TINTS: Record<CategoryCode, string> = {
-  income: '#dcfce7',
-  expense: '#fee2e2',
-  lend: '#ffedd5',
-  borrow: '#dbeafe',
-  lend_return: '#ccfbf1',
-  borrow_repay: '#ede9fe',
-};
+// Theme: chosen once at startup (styles are built at import time); changing it reloads the app.
+export type ThemePref = 'system' | 'light' | 'dark';
+const stored = loadThemePref();
+export const THEME_PREF: ThemePref = stored === 'light' || stored === 'dark' ? stored : 'system';
+export const IS_DARK = THEME_PREF === 'dark' || (THEME_PREF === 'system' && Appearance.getColorScheme() === 'dark');
+export const setThemePref = (pref: ThemePref) => saveThemePref(pref);
+
+/** Soft backgrounds behind each category's icon. */
+export const CATEGORY_TINTS: Record<CategoryCode, string> = IS_DARK
+  ? { income: '#14352a', expense: '#3a1c22', lend: '#3a2614', borrow: '#16264a', lend_return: '#123532', borrow_repay: '#2a1f4a' }
+  : { income: '#dcfce7', expense: '#fee2e2', lend: '#ffedd5', borrow: '#dbeafe', lend_return: '#ccfbf1', borrow_repay: '#ede9fe' };
 
 /** Gradients for the coloured header cards (expo-linear-gradient colour lists). */
 export const GRADIENTS = {
@@ -45,11 +48,16 @@ export const GRADIENTS = {
 };
 
 /** Soft card shadow; boxShadow works on web, iOS and Android. */
-export const SHADOW = { boxShadow: '0px 6px 20px rgba(30, 27, 75, 0.07)' } as const;
+export const SHADOW = { boxShadow: IS_DARK ? '0px 6px 20px rgba(0, 0, 0, 0.35)' : '0px 6px 20px rgba(30, 27, 75, 0.07)' } as const;
 
-export const COLORS = {
+const LIGHT = {
   bg: '#f4f5fb',
   card: '#ffffff',
+  input: '#ffffff',
+  subtle: '#f3f4f6', // read-only boxes, table headers
+  track: '#eef0f6', // progress bar background
+  skeleton: '#e5e7eb',
+  dangerSoft: '#fef2f2', // delete buttons
   text: '#1f2937',
   muted: '#6b7280',
   border: '#eceef5',
@@ -61,6 +69,28 @@ export const COLORS = {
   pendingBg: '#fffbeb',
   pendingBorder: '#fbbf24',
 };
+
+const DARK: typeof LIGHT = {
+  bg: '#0f1020',
+  card: '#1a1b2e',
+  input: '#14152a',
+  subtle: '#202238',
+  track: '#2a2c44',
+  skeleton: '#2a2c44',
+  dangerSoft: '#3a1c22',
+  text: '#e5e7eb',
+  muted: '#9ca3af',
+  border: '#2a2c44',
+  primary: '#6366f1',
+  primarySoft: '#25274a',
+  in: '#22c55e',
+  out: '#f87171',
+  pending: '#fbbf24',
+  pendingBg: '#2a2410',
+  pendingBorder: '#b45309',
+};
+
+export const COLORS = IS_DARK ? DARK : LIGHT;
 
 /** 1234567.5 -> "1,234,567.50" (own implementation: Intl support varies on Hermes). */
 export function money(n: number): string {

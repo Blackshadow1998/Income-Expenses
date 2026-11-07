@@ -196,5 +196,5 @@ const styles = StyleSheet.create({
   badge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontWeight: '700', fontSize: 12 },
   balance: { fontSize: 16, fontWeight: '800' },
-  trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center' },
+  trash: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.dangerSoft, alignItems: 'center', justifyContent: 'center' },
 });

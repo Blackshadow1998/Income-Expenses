@@ -315,6 +315,14 @@ export const api = {
   month: (month: string, accountId?: number | null) =>
     request<MonthData>(`/transactions?month=${month}${accountId ? `&account_id=${accountId}` : ''}`),
   get: (id: number) => request<Transaction>(`/transactions/${id}`),
+  /** Filters: q, from, to (YYYY-MM-DD), category_id, account_id, min, max — empty values are left out. */
+  search: (filters: Record<string, string | number | null | undefined>) => {
+    const qs = Object.entries(filters)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    return request<{ items: Transaction[]; totals: { in: number; out: number }; capped: boolean }>(`/transactions/search?${qs}`);
+  },
   create: (body: TransactionInput) =>
     request<Transaction>('/transactions', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: number, body: TransactionInput) =>

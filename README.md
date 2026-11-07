@@ -129,6 +129,7 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | GET | `/api/years` | ปีที่มีข้อมูล |
 | GET | `/api/balance?exclude_id=` | เงินคงเหลือทั้งหมด |
 | GET | `/api/transactions?month=YYYY-MM` | รายการ + ยอดรวมของเดือน |
+| GET | `/api/transactions/search?q=&from=&to=&category_id=&account_id=&min=&max=` | ค้นหา/กรองรายการ (สูงสุด 300) |
 | GET | `/api/transactions/{id}` | รายการเดียว |
 | POST | `/api/transactions` | เพิ่ม `{date, category_id, amount, note}` |
 | PUT | `/api/transactions/{id}` | แก้ไข |

@@ -85,6 +85,7 @@ func (a *API) routes() http.Handler {
 	data("GET /api/years", a.listYears)
 	data("GET /api/balance", a.getBalance)
 	data("GET /api/transactions", a.listTransactions)
+	data("GET /api/transactions/search", a.searchTransactions)
 	data("GET /api/transactions/{id}", a.getTransaction)
 	data("POST /api/transactions", a.createTransaction)
 	data("PUT /api/transactions/{id}", a.updateTransaction)

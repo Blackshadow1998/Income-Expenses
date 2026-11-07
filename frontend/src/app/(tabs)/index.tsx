@@ -248,7 +248,12 @@ export default function MonthScreen() {
             </View>
           )}
 
-          <Text style={styles.h2}>รายการ ({entryCount})</Text>
+          <View style={styles.listHeader}>
+            <Text style={styles.h2}>รายการ ({entryCount})</Text>
+            <PressScale onPress={() => router.push('/search')} scaleTo={0.92} style={styles.searchBtn} accessibilityLabel="ค้นหารายการ">
+              <Text style={{ color: COLORS.primary, fontWeight: '700' }}>🔍 ค้นหา</Text>
+            </PressScale>
+          </View>
 
           {loading ? (
             <ListSkeleton />
@@ -487,7 +492,9 @@ const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '50%' },
   actions: { flexDirection: 'row', gap: 10 },
-  h2: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginTop: 4 },
+  h2: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  searchBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: COLORS.primarySoft },
   h3: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
   dayLabel: { color: COLORS.muted, fontWeight: '700', fontSize: 13 },

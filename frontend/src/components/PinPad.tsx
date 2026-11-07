@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, LayoutRectangle, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Easing, LayoutRectangle, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { FadeIn, GridLoader, PressScale, Shake, ShakeHandle } from './motion';
 import { ringTop, VAULT, VaultDial } from './VaultDial';
 
@@ -39,8 +39,15 @@ export function PinPad({
   listenKeys?: boolean;
 }) {
   const [digits, setDigits] = useState('');
-  const { width } = useWindowDimensions();
-  const dialSize = Math.min(340, width - 40);
+  const { width, height } = useWindowDimensions();
+  // Dial + keypad must fit one screen: the keypad, status line and footer take about 470 px.
+  const dialSize = Math.max(220, Math.min(340, width - 40, height - 470));
+
+  // The title starts as a card in the middle of the screen; a tap or a key press puts it away, and it
+  // comes back when the title changes (e.g. "confirm PIN" while setting one up).
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null);
+  const prompting = dismissedFor !== title && !granted;
+  const dismiss = useCallback(() => setDismissedFor(title), [title]);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -76,6 +83,7 @@ export function PinPad({
   const press = useCallback(
     (key: string) => {
       if (busy) return;
+      dismiss();
       const cur = digitsRef.current;
       let next = cur;
       if (key === '⌫' || key === 'clear') {
@@ -96,7 +104,7 @@ export function PinPad({
       digitsRef.current = next;
       setDigits(next);
     },
-    [busy, launch, ringAt, keyAt],
+    [busy, dismiss, launch, ringAt, keyAt],
   );
 
   useEffect(() => {
@@ -124,9 +132,6 @@ export function PinPad({
 
   return (
     <FadeIn style={styles.wrap}>
-      <Text style={styles.title}>{granted ? 'ปลดล็อกแล้ว' : title}</Text>
-      {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-
       <View onLayout={(e) => (dialBox.current = e.nativeEvent.layout)}>
         <Shake ref={shaker}>
           <VaultDial
@@ -138,7 +143,13 @@ export function PinPad({
         </Shake>
       </View>
       <View style={styles.status}>
-        {busy && !granted ? <GridLoader size={22} /> : !!error && !granted && <Text style={styles.error}>{error}</Text>}
+        {granted ? (
+          <Text style={styles.granted}>ปลดล็อกแล้ว</Text>
+        ) : busy ? (
+          <GridLoader size={22} />
+        ) : (
+          !!error && <Text style={styles.error}>{error}</Text>
+        )}
       </View>
 
       <View style={styles.keypad} onLayout={(e) => (padBox.current = e.nativeEvent.layout)}>
@@ -165,12 +176,40 @@ export function PinPad({
         )}
       </View>
       {footer}
+      <Prompt visible={prompting} title={title} subtitle={subtitle} error={error} onDismiss={dismiss} />
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {flights.map((f) => (
           <FlyingDigit key={f.id} flight={f} onDone={landed} />
         ))}
       </View>
     </FadeIn>
+  );
+}
+
+/** Title card in the middle of the pad over a dimmed dial; a tap (or any key) puts it away. */
+function Prompt({ visible, title, subtitle, error, onDismiss }: {
+  visible: boolean;
+  title: string;
+  subtitle?: string;
+  error?: string | null;
+  onDismiss: () => void;
+}) {
+  const v = useState(() => new Animated.Value(visible ? 1 : 0))[0];
+  useEffect(() => {
+    Animated.timing(v, { toValue: visible ? 1 : 0, duration: visible ? 260 : 220, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }).start();
+  }, [v, visible]);
+  return (
+    <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[StyleSheet.absoluteFill, styles.promptBack, { opacity: v }]}>
+      <Pressable onPress={onDismiss} style={styles.promptFill} accessibilityRole="button" accessibilityLabel={`${title} แตะเพื่อเริ่ม`}>
+        <Animated.View style={[styles.promptCard, { transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
+          <Text style={{ fontSize: 34 }}>🔐</Text>
+          <Text style={styles.title}>{title}</Text>
+          {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+          {visible && !!error && <Text style={styles.error}>{error}</Text>}
+          <Text style={styles.tapHint}>แตะเพื่อเริ่ม</Text>
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -239,9 +278,24 @@ const styles = StyleSheet.create({
     borderRadius: 28,
   },
   title: { fontSize: 20, fontWeight: '800', color: VAULT.text, textAlign: 'center' },
-  subtitle: { color: VAULT.muted, textAlign: 'center', marginBottom: 6 },
+  subtitle: { color: VAULT.muted, textAlign: 'center' },
   status: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 8 },
   error: { color: VAULT.red, textAlign: 'center' },
+  granted: { color: VAULT.gold, textAlign: 'center', fontWeight: '800', fontSize: 16 },
+  promptBack: { backgroundColor: 'rgba(16, 12, 10, 0.72)', borderRadius: 28, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(3px)' } : null) },
+  promptFill: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  promptCard: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    borderRadius: 24,
+    backgroundColor: '#1d1713',
+    borderWidth: 1,
+    borderColor: 'rgba(233, 181, 98, 0.3)',
+    boxShadow: '0px 0px 40px rgba(233, 181, 98, 0.18)',
+  },
+  tapHint: { marginTop: 6, color: VAULT.gold, fontWeight: '700', fontSize: 13 },
   keypad: { flexDirection: 'row', flexWrap: 'wrap', width: 3 * KEY + 2 * COL_GAP, rowGap: ROW_GAP, columnGap: COL_GAP }, // 3 keys per row
   key: { width: KEY, height: KEY, borderRadius: KEY / 2, alignItems: 'center', justifyContent: 'center' },
   flying: {

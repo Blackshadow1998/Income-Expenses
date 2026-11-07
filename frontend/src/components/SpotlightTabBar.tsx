@@ -29,7 +29,8 @@ function Bar({ state, descriptors, emitter, navigateToTab, insets, glyphs }: Bot
   }, [pos, state.index]);
 
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+    // Half the bottom inset is enough: the floating bar's own margin already clears the gesture bar.
+    <View style={[styles.wrap, { paddingBottom: Math.max(6, Math.round(insets.bottom / 2)) }]}>
       <View style={styles.bar} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
         {width > 0 && (
           <Animated.View
@@ -89,7 +90,7 @@ function Bar({ state, descriptors, emitter, navigateToTab, insets, glyphs }: Bot
 }
 
 const styles = StyleSheet.create({
-  wrap: { backgroundColor: COLORS.bg, paddingHorizontal: 12, paddingTop: 6 },
+  wrap: { backgroundColor: COLORS.bg, paddingHorizontal: 12, paddingTop: 4 },
   bar: {
     flexDirection: 'row',
     height: BAR_HEIGHT,

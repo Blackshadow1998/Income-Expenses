@@ -42,11 +42,32 @@ func TestDailyBackupWritesOncePerDayAndPrunes(t *testing.T) {
 		t.Fatalf("second backup the same day should be skipped: %q %v", again, err)
 	}
 	entries, _ := os.ReadDir(backups)
-	if len(entries) != 3 {
-		t.Fatalf("kept %d files, want 3", len(entries))
+	files := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			files++
+		}
+	}
+	if files != 3 {
+		t.Fatalf("kept %d daily files, want 3", files)
 	}
 	if _, err := os.Stat(filepath.Join(backups, backupPrefix+"2026-10-01.db")); !os.IsNotExist(err) {
 		t.Fatal("oldest backup should have been pruned")
+	}
+
+	// Monthly copies: the first of each month, never pruned.
+	nov := filepath.Join(backups, "monthly", backupPrefix+"2026-11.db")
+	if _, err := os.Stat(nov); err != nil {
+		t.Fatalf("November monthly copy missing: %v", err)
+	}
+	for day := 1; day <= 60; day++ { // up to 6 January
+		if _, err := dailyBackup(context.Background(), db, backups, now.AddDate(0, 0, day), 3); err != nil {
+			t.Fatal(err)
+		}
+	}
+	monthly, _ := os.ReadDir(filepath.Join(backups, "monthly"))
+	if len(monthly) != 3 { // November, December, January
+		t.Fatalf("monthly copies = %d, want 3", len(monthly))
 	}
 }
 

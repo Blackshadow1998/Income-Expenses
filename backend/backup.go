@@ -39,25 +39,44 @@ func runBackups(ctx context.Context, db *sql.DB, dir, slipsDir string, keep int)
 	}
 }
 
-// dailyBackup writes today's copy if it doesn't exist yet and prunes old copies. It returns the new
-// file's path, or "" when today's copy was already there.
+// dailyBackup writes today's copy if it doesn't exist yet and prunes old daily copies. The first copy
+// of each month is also kept in dir/monthly, which is never pruned. It returns the new daily file's
+// path, or "" when today's copy was already there.
 func dailyBackup(ctx context.Context, db *sql.DB, dir string, now time.Time, keep int) (string, error) {
 	path := filepath.Join(dir, backupPrefix+now.Format("2006-01-02")+".db")
-	if _, err := os.Stat(path); err == nil {
-		return "", nil
-	}
-	// VACUUM INTO makes a consistent copy while the app keeps running; write to a temp name first
-	// so a half-written file never looks like a finished backup.
-	tmp := path + ".tmp"
-	os.Remove(tmp)
-	if _, err := db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
+	created := ""
+	if _, err := os.Stat(path); err != nil {
+		// VACUUM INTO makes a consistent copy while the app keeps running; write to a temp name first
+		// so a half-written file never looks like a finished backup.
+		tmp := path + ".tmp"
 		os.Remove(tmp)
-		return "", err
+		if _, err := db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
+			os.Remove(tmp)
+			return "", err
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			return "", err
+		}
+		if err := pruneBackups(dir, keep); err != nil {
+			return path, err
+		}
+		created = path
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		return "", err
+	monthly := filepath.Join(dir, "monthly", backupPrefix+now.Format("2006-01")+".db")
+	if _, err := os.Stat(monthly); err != nil {
+		if err := os.MkdirAll(filepath.Dir(monthly), 0o755); err != nil {
+			return created, err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return created, err
+		}
+		if err := os.WriteFile(monthly, data, 0o644); err != nil {
+			return created, err
+		}
+		logger.Printf("monthly backup written: %s", monthly)
 	}
-	return path, pruneBackups(dir, keep)
+	return created, nil
 }
 
 // mirrorDir makes dst hold the same files as src (flat directory): copies new or resized files and

@@ -238,7 +238,8 @@ func (a *API) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	var count int
 	if err := a.db.QueryRowContext(r.Context(),
 		`SELECT (SELECT COUNT(*) FROM transactions WHERE account_id = ?1 AND user_id = ?2) +
-		        (SELECT COUNT(*) FROM transfers WHERE (from_account_id = ?1 OR to_account_id = ?1) AND user_id = ?2)`,
+		        (SELECT COUNT(*) FROM transfers WHERE (from_account_id = ?1 OR to_account_id = ?1) AND user_id = ?2) +
+		        (SELECT COUNT(*) FROM recurring WHERE account_id = ?1 AND user_id = ?2)`,
 		id, uid).Scan(&count); err != nil {
 		serverError(w, err)
 		return

@@ -65,6 +65,7 @@ func main() {
 	if dir := getenv("BACKUP_DIR", ""); dir != "" {
 		go runBackups(ctx, db, dir, 30)
 	}
+	go runRecurring(ctx, db)
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -355,6 +355,7 @@ function TxnRow({ t, first, onPress, onDelete }: { t: Transaction; first: boolea
       <IconBubble icon={CATEGORY_ICONS[t.category_code]} tint={CATEGORY_TINTS[t.category_code]} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={styles.rowTitle} numberOfLines={1}>
+          {t.recurring_id ? '🔁 ' : ''}
           {title}
         </Text>
         <Text style={[styles.rowSub, !t.account_label && { fontStyle: 'italic' }]} numberOfLines={1}>

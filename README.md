@@ -138,6 +138,8 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | GET | `/api/accounts/options` | รายชื่อธนาคาร และประเภทบัญชี |
 | GET/PUT/DELETE | `/api/accounts/{id}` | ดู / แก้ไข / ลบ บัญชี |
 | POST | `/api/accounts` | เพิ่มบัญชี `{bank_id, type_id, name, opening_balance}` |
+| GET/POST | `/api/recurring` | รายการประจำ (สร้างรายการอัตโนมัติทุกเดือนตามวันที่, เริ่มจากวันนี้ ไม่ย้อนหลัง) |
+| PUT/DELETE | `/api/recurring/{id}` | แก้/หยุด (`active:false`)/ลบ — รายการที่สร้างแล้วยังอยู่ |
 | GET | `/api/budgets?month=YYYY-MM` | งบประมาณรายเดือน + ยอดที่ใช้ไปในเดือนนั้น |
 | POST | `/api/budgets` | ตั้ง/แก้งบ `{category_id, subcategory_id?, amount}` (หมวด/รายการเดิม = แทนที่) |
 | DELETE | `/api/budgets/{id}` | ลบงบ |

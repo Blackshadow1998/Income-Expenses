@@ -55,6 +55,7 @@ function Gate() {
         <Stack.Screen name="change-password" options={{ title: 'เปลี่ยนรหัสผ่าน' }} />
         <Stack.Screen name="subcategories" options={{ title: 'จัดการรายการ' }} />
         <Stack.Screen name="budgets" options={{ title: 'งบประมาณ' }} />
+        <Stack.Screen name="recurring" options={{ title: 'รายการประจำ' }} />
       </Stack>
       {status === 'needsPin' && (
         <Overlay>

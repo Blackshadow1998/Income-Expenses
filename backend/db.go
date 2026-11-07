@@ -139,6 +139,22 @@ CREATE TABLE IF NOT EXISTS transfers (
 
 CREATE INDEX IF NOT EXISTS idx_transfers_user_date ON transfers(user_id, txn_date);
 
+-- Monthly rule that creates a normal transaction on day_of_month (clamped to the month's last day).
+CREATE TABLE IF NOT EXISTS recurring (
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id        INTEGER NOT NULL REFERENCES users(id),
+	day_of_month   INTEGER NOT NULL CHECK (day_of_month BETWEEN 1 AND 31),
+	category_id    INTEGER NOT NULL REFERENCES categories(id),
+	subcategory_id INTEGER REFERENCES subcategories(id) ON DELETE SET NULL,
+	account_id     INTEGER NOT NULL REFERENCES accounts(id),
+	amount_satang  INTEGER NOT NULL CHECK (amount_satang > 0),
+	note           TEXT    NOT NULL DEFAULT '',
+	payee          TEXT    NOT NULL DEFAULT '',
+	next_date      TEXT    NOT NULL,              -- YYYY-MM-DD of the next transaction to create
+	active         INTEGER NOT NULL DEFAULT 1,
+	created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Monthly spending limit for a category, or for one item of it (subcategory_id set). Same every month.
 CREATE TABLE IF NOT EXISTS budgets (
 	id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,6 +233,9 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 	if err := addColumnIfMissing(db, "transactions", "user_id", "INTEGER REFERENCES users(id)"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "transactions", "recurring_id", "INTEGER REFERENCES recurring(id) ON DELETE SET NULL"); err != nil {
 		return err
 	}
 	if err := upgradeSlips(db); err != nil {

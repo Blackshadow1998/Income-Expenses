@@ -43,6 +43,7 @@ export interface Transaction {
   slip_id: number | null; // set when confirmed from a bank slip
   slip_from: string;
   slip_to: string;
+  recurring_id: number | null; // set when created by a recurring rule
   direction: 1 | -1;
   amount: number;
   note: string;
@@ -148,6 +149,26 @@ export interface TransferInput {
   amount: number;
   note: string;
 }
+
+/** Monthly rule that creates a normal transaction on `day` (clamped to the month's last day). */
+export interface Recurring {
+  id: number;
+  day: number;
+  category_id: number;
+  category_code: CategoryCode;
+  category_name: string;
+  subcategory_id: number | null;
+  subcategory_name: string;
+  account_id: number;
+  account_label: string;
+  amount: number;
+  note: string;
+  payee: string;
+  next_date: string;
+  active: boolean;
+}
+
+export type RecurringInput = Pick<Recurring, 'day' | 'category_id' | 'subcategory_id' | 'account_id' | 'amount' | 'note' | 'payee' | 'active'>;
 
 export interface Budget {
   id: number;
@@ -289,6 +310,13 @@ export const api = {
   remove: (id: number) => request<void>(`/transactions/${id}`, { method: 'DELETE' }),
   yearly: (year: number, accountId?: number | null) =>
     request<YearData>(`/summary/yearly?year=${year}${accountId ? `&account_id=${accountId}` : ''}`),
+
+  recurring: () => request<Recurring[]>('/recurring'),
+  saveRecurring: (id: number | null, body: RecurringInput) =>
+    id
+      ? request<{ id: number; created_transactions: number }>(`/recurring/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+      : request<{ id: number; created_transactions: number }>('/recurring', post(body)),
+  removeRecurring: (id: number) => request<void>(`/recurring/${id}`, { method: 'DELETE' }),
 
   budgets: (month: string) => request<Budget[]>(`/budgets?month=${month}`),
   /** Creates or replaces the budget of a category (or of one item of it). */

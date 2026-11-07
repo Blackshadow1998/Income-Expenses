@@ -37,6 +37,7 @@ type Transaction struct {
 	SlipID          *int64  `json:"slip_id"` // set when created by confirming a bank slip
 	SlipFrom        string  `json:"slip_from"`
 	SlipTo          string  `json:"slip_to"`
+	RecurringID     *int64  `json:"recurring_id"` // set when created by a recurring rule
 	Direction       int     `json:"direction"`
 	Amount          float64 `json:"amount"`
 	Note            string  `json:"note"`
@@ -102,6 +103,10 @@ func (a *API) routes() http.Handler {
 	data("POST /api/subcategories", a.createSubcategory)
 	data("PUT /api/subcategories/{id}", a.renameSubcategory)
 	data("DELETE /api/subcategories/{id}", a.deleteSubcategory)
+	data("GET /api/recurring", a.listRecurring)
+	data("POST /api/recurring", a.createRecurring)
+	data("PUT /api/recurring/{id}", a.updateRecurring)
+	data("DELETE /api/recurring/{id}", a.deleteRecurring)
 	data("GET /api/budgets", a.listBudgets)
 	data("POST /api/budgets", a.saveBudget)
 	data("DELETE /api/budgets/{id}", a.deleteBudget)
@@ -554,7 +559,7 @@ const selectTxn = `
 	SELECT t.id, t.txn_date, t.category_id, c.code, c.name, t.subcategory_id, COALESCE(s.name, ''),
 	       t.account_id, COALESCE(` + accountLabelSQL + `, ''),
 	       sl.id, COALESCE(sl.from_name, ''), COALESCE(sl.to_name, ''),
-	       c.direction, t.amount_satang, t.note, t.payee
+	       c.direction, t.amount_satang, t.note, t.payee, t.recurring_id
 	FROM transactions t
 	JOIN categories c ON c.id = t.category_id
 	LEFT JOIN subcategories s ON s.id = t.subcategory_id
@@ -575,7 +580,7 @@ func scanTxn(s scanner) (Transaction, int64, error) {
 	var satang int64
 	err := s.Scan(&t.ID, &t.Date, &t.CategoryID, &t.CategoryCode, &t.CategoryName,
 		&t.SubcategoryID, &t.SubcategoryName, &t.AccountID, &t.AccountLabel,
-		&t.SlipID, &t.SlipFrom, &t.SlipTo, &t.Direction, &satang, &t.Note, &t.Payee)
+		&t.SlipID, &t.SlipFrom, &t.SlipTo, &t.Direction, &satang, &t.Note, &t.Payee, &t.RecurringID)
 	t.Amount = fromSatang(satang)
 	return t, satang, err
 }

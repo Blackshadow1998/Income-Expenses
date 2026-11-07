@@ -1,0 +1,295 @@
+package server
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"income-expenses/internal/httpx"
+	"income-expenses/internal/money"
+)
+
+type Account struct {
+	ID       int64   `json:"id"`
+	BankID   int64   `json:"bank_id"`
+	BankName string  `json:"bank_name"`
+	TypeID   int64   `json:"type_id"`
+	TypeCode string  `json:"type_code"`
+	TypeName string  `json:"type_name"`
+	Name     string  `json:"name"`
+	Label    string  `json:"label"`
+	Opening  float64 `json:"opening_balance"`
+	Balance  float64 `json:"balance"` // opening + all transactions of this account
+	TxnCount int     `json:"transaction_count"`
+}
+
+type accountInput struct {
+	BankID  int64   `json:"bank_id"`
+	TypeID  int64   `json:"type_id"`
+	Name    string  `json:"name"`
+	Opening float64 `json:"opening_balance"`
+}
+
+type Option struct {
+	ID   int64  `json:"id"`
+	Code string `json:"code,omitempty"`
+	Name string `json:"name"`
+}
+
+type typeTotal struct {
+	Code    string  `json:"code"`
+	Name    string  `json:"name"`
+	Balance float64 `json:"balance"`
+	Count   int     `json:"count"`
+}
+
+// accountLabelSQL builds "ธนาคาร · ประเภท · ชื่อ" for display; expects aliases a, b, ty.
+const accountLabelSQL = `b.name || ' · ' || ty.name || CASE WHEN a.name <> '' THEN ' · ' || a.name ELSE '' END`
+
+const selectAccount = `
+	SELECT a.id, a.bank_id, b.name, a.type_id, ty.code, ty.name, a.name, ` + accountLabelSQL + `,
+	       a.opening_satang,
+	       a.opening_satang + COALESCE((
+	           SELECT SUM(t.amount_satang * c.direction)
+	           FROM transactions t JOIN categories c ON c.id = t.category_id
+	           WHERE t.account_id = a.id), 0) + COALESCE((
+	           SELECT SUM(CASE WHEN tr.to_account_id = a.id THEN tr.amount_satang ELSE -tr.amount_satang END)
+	           FROM transfers tr WHERE tr.from_account_id = a.id OR tr.to_account_id = a.id), 0),
+	       (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id)
+	FROM accounts a
+	JOIN banks b ON b.id = a.bank_id
+	JOIN account_types ty ON ty.id = a.type_id`
+
+func scanAccount(s scanner) (Account, error) {
+	var a Account
+	var opening, balance int64
+	err := s.Scan(&a.ID, &a.BankID, &a.BankName, &a.TypeID, &a.TypeCode, &a.TypeName, &a.Name, &a.Label,
+		&opening, &balance, &a.TxnCount)
+	a.Opening = money.FromSatang(opening)
+	a.Balance = money.FromSatang(balance)
+	return a, err
+}
+
+func (a *API) fetchAccount(ctx context.Context, uid, id int64) (Account, error) {
+	return scanAccount(a.db.QueryRowContext(ctx, selectAccount+` WHERE a.id = ? AND a.user_id = ?`, id, uid))
+}
+
+// listAccounts returns every account with its balance, plus the grand total and
+// a per-type breakdown. Transactions saved before accounts existed are reported as "unassigned".
+func (a *API) listAccounts(w http.ResponseWriter, r *http.Request) {
+	uid := userID(r)
+	rows, err := a.db.QueryContext(r.Context(), selectAccount+`
+		WHERE a.user_id = ? ORDER BY ty.sort_order, b.sort_order, a.id`, uid)
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	defer rows.Close()
+
+	accounts := []Account{}
+	byType := []typeTotal{}
+	var total float64
+	for rows.Next() {
+		acc, err := scanAccount(rows)
+		if err != nil {
+			httpx.ServerError(w, err)
+			return
+		}
+		accounts = append(accounts, acc)
+		total += acc.Balance
+		if n := len(byType); n == 0 || byType[n-1].Code != acc.TypeCode {
+			byType = append(byType, typeTotal{Code: acc.TypeCode, Name: acc.TypeName})
+		}
+		bt := &byType[len(byType)-1]
+		bt.Balance = money.Round2(bt.Balance + acc.Balance)
+		bt.Count++
+	}
+	rows.Close()
+
+	var unassignedSatang int64
+	var unassignedCount int
+	if err := a.db.QueryRowContext(r.Context(), `
+		SELECT COALESCE(SUM(t.amount_satang * c.direction), 0), COUNT(*)
+		FROM transactions t JOIN categories c ON c.id = t.category_id
+		WHERE t.account_id IS NULL AND t.user_id = ?`, uid).Scan(&unassignedSatang, &unassignedCount); err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"accounts": accounts,
+		"by_type":  byType,
+		"unassigned": map[string]any{
+			"balance": money.FromSatang(unassignedSatang),
+			"count":   unassignedCount,
+		},
+		"total": money.Round2(total + money.FromSatang(unassignedSatang)),
+	})
+}
+
+func (a *API) accountOptions(w http.ResponseWriter, r *http.Request) {
+	banks, err := a.options(r.Context(), `SELECT id, '', name FROM banks ORDER BY sort_order, id`)
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	types, err := a.options(r.Context(), `SELECT id, code, name FROM account_types ORDER BY sort_order, id`)
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"banks": banks, "types": types})
+}
+
+func (a *API) options(ctx context.Context, query string) ([]Option, error) {
+	rows, err := a.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Option{}
+	for rows.Next() {
+		var o Option
+		if err := rows.Scan(&o.ID, &o.Code, &o.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+func (a *API) getAccount(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathID(w, r)
+	if !ok {
+		return
+	}
+	acc, err := a.fetchAccount(r.Context(), userID(r), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.NotFound(w)
+		return
+	}
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, acc)
+}
+
+func (a *API) createAccount(w http.ResponseWriter, r *http.Request) {
+	in, ok := a.decodeAccountInput(w, r)
+	if !ok {
+		return
+	}
+	res, err := a.db.ExecContext(r.Context(),
+		`INSERT INTO accounts (user_id, bank_id, type_id, name, opening_satang) VALUES (?, ?, ?, ?, ?)`,
+		userID(r), in.BankID, in.TypeID, in.Name, money.ToSatang(in.Opening))
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	id, _ := res.LastInsertId()
+	acc, err := a.fetchAccount(r.Context(), userID(r), id)
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, acc)
+}
+
+func (a *API) updateAccount(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathID(w, r)
+	if !ok {
+		return
+	}
+	in, ok := a.decodeAccountInput(w, r)
+	if !ok {
+		return
+	}
+	res, err := a.db.ExecContext(r.Context(), `
+		UPDATE accounts
+		SET bank_id = ?, type_id = ?, name = ?, opening_satang = ?, updated_at = datetime('now')
+		WHERE id = ? AND user_id = ?`,
+		in.BankID, in.TypeID, in.Name, money.ToSatang(in.Opening), id, userID(r))
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		httpx.NotFound(w)
+		return
+	}
+	acc, err := a.fetchAccount(r.Context(), userID(r), id)
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, acc)
+}
+
+// deleteAccount refuses to delete an account that still has transactions,
+// so no income/expense history is lost by accident.
+func (a *API) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathID(w, r)
+	if !ok {
+		return
+	}
+	uid := userID(r)
+	var count int
+	if err := a.db.QueryRowContext(r.Context(),
+		`SELECT (SELECT COUNT(*) FROM transactions WHERE account_id = ?1 AND user_id = ?2) +
+		        (SELECT COUNT(*) FROM transfers WHERE (from_account_id = ?1 OR to_account_id = ?1) AND user_id = ?2) +
+		        (SELECT COUNT(*) FROM recurring WHERE account_id = ?1 AND user_id = ?2)`,
+		id, uid).Scan(&count); err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	if count > 0 {
+		httpx.WriteJSON(w, http.StatusConflict, map[string]string{
+			"error": "บัญชีนี้ยังมีรายการรับ/จ่ายอยู่ " + strconv.Itoa(count) + " รายการ กรุณาย้ายหรือลบรายการก่อน",
+		})
+		return
+	}
+	res, err := a.db.ExecContext(r.Context(), `DELETE FROM accounts WHERE id = ? AND user_id = ?`, id, uid)
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		httpx.NotFound(w)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) decodeAccountInput(w http.ResponseWriter, r *http.Request) (accountInput, bool) {
+	var in accountInput
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpx.BadRequest(w, "invalid JSON body")
+		return in, false
+	}
+	if math.IsNaN(in.Opening) || math.IsInf(in.Opening, 0) {
+		httpx.BadRequest(w, "opening_balance must be a number")
+		return in, false
+	}
+	var bankOK, typeOK bool
+	if err := a.db.QueryRowContext(r.Context(), `
+		SELECT EXISTS(SELECT 1 FROM banks WHERE id = ?), EXISTS(SELECT 1 FROM account_types WHERE id = ?)`,
+		in.BankID, in.TypeID).Scan(&bankOK, &typeOK); err != nil {
+		httpx.ServerError(w, err)
+		return in, false
+	}
+	if !bankOK {
+		httpx.BadRequest(w, "unknown bank_id")
+		return in, false
+	}
+	if !typeOK {
+		httpx.BadRequest(w, "unknown type_id")
+		return in, false
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	return in, true
+}

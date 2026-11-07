@@ -13,10 +13,10 @@ FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
-COPY backend/*.go ./
-COPY backend/split/ ./split/
+COPY backend/cmd/ ./cmd/
+COPY backend/internal/ ./internal/
 # modernc.org/sqlite is pure Go, so no CGO / C toolchain is needed.
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/api .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM alpine:3.20
 # tesseract + Thai/English language data reads bank slips locally (no external service);

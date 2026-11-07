@@ -6,9 +6,14 @@ See README.md for features, API table and run commands.
 ## Stack and layout
 
 - `backend/` — Go 1.25, standard `net/http` (Go 1.22+ method routing), SQLite via `modernc.org/sqlite` (pure Go, no CGO). Runs in Docker.
-  - `main.go` server + graceful shutdown · `db.go` schema/seed/migrations · `handlers.go` transactions, months, yearly, payees
-  - `accounts.go` accounts/banks/types · `slips.go` slip upload/confirm · `slip_parse.go` Tesseract OCR + slip text parser (+ `slip_parse_test.go`)
-  - `auth.go` users, sessions, PIN lock, signed slip-image links (+ `auth_test.go`: migration from the pre-auth DB, per-user isolation, PIN flow)
+  - `cmd/api/main.go` wiring only: config → DB → `server.New` → HTTP server, backups, recurring, graceful shutdown
+  - `internal/` leaf packages (import no app package, or only `logx`/`money`): `config` (env) · `database` (schema/seed/migrations)
+    · `httpx` (JSON helpers, `PathID`, CORS, request log) · `money` (satang) · `ocr` (Tesseract + slip/receipt parsers)
+    · `split` (trip maths) · `mail` · `backup` · `web` (serves the exported app) · `logx` (logger)
+  - `internal/server` — all HTTP handlers + routes (`server.go`); the only package that imports the others besides `cmd`.
+    `handlers.go` transactions/months/yearly/payees · `accounts.go` · `slips.go` · `auth.go` users, sessions, PIN, signed links
+    (+ `auth_test.go`: migration from the pre-auth DB, per-user isolation, PIN flow; `newTestServer` for all server tests)
+  - Keep the direction: leaves never import `server`; new pure logic goes in a leaf package with its own tests.
 - `frontend/` — Expo SDK 58 + Expo Router (`src/app/`), React Native, TypeScript, runs on web/Android/iOS.
   - `(tabs)/index.tsx` monthly · `(tabs)/yearly.tsx` chart · `(tabs)/accounts.tsx` · `transaction.tsx` add/edit/confirm-slip form · `account.tsx` account form
   - `(tabs)/settings.tsx` lock / change PIN / sign out · `change-pin.tsx`
@@ -17,7 +22,7 @@ See README.md for features, API table and run commands.
   - Follow `frontend/AGENTS.md` (Expo rules: `npx expo install`, versioned docs).
 - `docker-compose.yml` — API **and the built web app** on 127.0.0.1:8080 only; other devices use HTTPS via
   `tailscale serve --bg 8080` → https://aekkaroek.tail1a3ff3.ts.net (tailnet only) (build context = repo root; `backend/Dockerfile` runs
-  `expo export` in a node stage, Go serves it from `WEB_DIR` via `web.go`). Data in volume
+  `expo export` in a node stage, Go serves it from `WEB_DIR` via `internal/web`). Data in volume
   `income_expenses_income_expenses_data` (`/app/data`: DB + `slips/` images). Frontend changes reach the live site only after a rebuild.
 - The web build calls the API on its own origin; only the dev server (`__DEV__`, port 8081) calls `<host>:8080`.
 - Don't start `expo start` with `CI=1` when the owner should see live edits — CI mode disables reloads.
@@ -43,14 +48,14 @@ cd frontend && npx expo start --web --port 8081                                #
 - Balance = sum of account opening balances + signed transactions (+ transfers for a single account). Transactions saved before accounts existed have `account_id NULL` ("ไม่ระบุบัญชี") and still count in the total.
 - New/edited transactions **require** an account; payee ("ผู้รับ") and subcategory are optional.
 - Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`), or a transfer (`POST /api/transfers` with `slip_id` → `slips.transfer_id`). Deleting that transaction/transfer deletes the slip + image.
-- OCR runs twice (original + ImageMagick 2x); `slips.ocr_text` holds both, split by `upscaledMark`. Always parse
-  stored text with `parseSlipText` (merges field by field), never `parseSlip` directly.
-- Trip bill splitting (`trips.go`, screens `(tabs)/trips.tsx`, `trip.tsx`, `trip-bill.tsx`, `trip-payment.tsx`): members are
-  names, not users; all maths is in package `backend/split` (int64 satang, leftover satang to the payer if sharing else
+- OCR runs twice (original + ImageMagick 2x); `slips.ocr_text` holds both, split by `ocr.UpscaledMark`. Always parse
+  stored text with `ocr.ParseSlipText` (merges field by field), never `parseSlip` directly.
+- Trip bill splitting (`internal/server/trips.go`, screens `(tabs)/trips.tsx`, `trip.tsx`, `trip-bill.tsx`, `trip-payment.tsx`): members are
+  names, not users; all maths is in package `internal/split` (int64 satang, leftover satang to the payer if sharing else
   the first listed; pairwise netting and greedy "minimal" transfers). Balances are never stored — always computed from
   `trip_bills`/`trip_bill_parts` minus `trip_payments`. Payment slips and bill photos (`trip_bills.image_file`) live in
   the slips dir as `trip-*` files (backed up); each kind has its own link signature (`tripImage` in trips.go).
-  `trip_ocr.go` reads a receipt (items + total) or slip for the form only — it never stores or auto-saves anything.
+  `trip_ocr.go` (parser: `internal/ocr/receipt.go`) reads a receipt (items + total) or slip for the form only — it never stores or auto-saves anything.
   `frontend/src/tripSplit.ts` mirrors the share rule for the form preview (`npm test` runs its tests with Node).
 - The "รายรับรายจ่าย" tab is `index` (month) + hidden `yearly` route, switched by `PeriodSwitch`; the tab bar takes
   glyphs + aliases (`makeSpotlightTabBar`).
@@ -82,7 +87,7 @@ cd frontend && npx expo start --web --port 8081                                #
   `docker compose stop && docker cp income-expenses-api:/app/data/income_expenses.db backups/<name>.db && docker compose start`
   (then move it to `manual/` in the backup folder set by `BACKUP_HOST_DIR` in `.env`, which syncs to the cloud).
   Daily copies + `monthly/` + `slips/` are written there automatically; use one of them as the test copy.
-- Schema changes go through `migrate()` / `addColumnIfMissing` in `db.go` (existing DBs must upgrade in place).
+- Schema changes go through `migrate()` / `addColumnIfMissing` in `internal/database` (existing DBs must upgrade in place).
 - Remove any test rows you create; never commit `backups/` or `*.db` (already in `.gitignore`).
 - Never sign up a test user on the live DB — it needs a real account to log in, and on a fresh DB the first sign-up takes over all data.
   Test against a copy (run the image on another port with a copied `/app/data`).

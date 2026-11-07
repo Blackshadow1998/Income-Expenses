@@ -38,7 +38,9 @@ export function GoogleButton({ onCredential, text = 'signin_with' }: {
 }) {
   const [clientId, setClientId] = useState('');
   const callback = useRef(onCredential);
-  callback.current = onCredential;
+  useEffect(() => {
+    callback.current = onCredential;
+  }, [onCredential]);
   const id = 'google-btn';
 
   useEffect(() => {

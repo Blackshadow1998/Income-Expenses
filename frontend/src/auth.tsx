@@ -43,7 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef(status);
-  statusRef.current = status;
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
   const lastPing = useRef(0);
   const resettingPin = useRef(false); // signed out via "forgot PIN": ask for a new PIN after the password
 

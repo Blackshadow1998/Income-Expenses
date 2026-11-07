@@ -28,6 +28,7 @@ See README.md for features, API table and run commands.
 docker compose up -d --build                                                   # backend (Go is not installed locally)
 docker run --rm -v "$PWD/backend:/src" -w /src golang:1.25-alpine sh -c "gofmt -l -w . && go vet ./... && go test ./..."
 cd frontend && npx tsc --noEmit                                                # typecheck
+cd frontend && npx eslint src                                                  # lint (0 errors expected; set-state-in-effect is a known warning)
 cd frontend && npx expo start --web --port 8081                                # web UI (also in .claude/launch.json)
 ```
 
@@ -62,6 +63,8 @@ cd frontend && npx expo start --web --port 8081                                #
 
 - The Docker volume holds the owner's **real** data. Back up before schema changes:
   `docker compose stop && docker cp income-expenses-api:/app/data/income_expenses.db backups/<name>.db && docker compose start`
+  (then move it to `manual/` in the backup folder set by `BACKUP_HOST_DIR` in `.env`, which syncs to the cloud).
+  Daily copies + `monthly/` + `slips/` are written there automatically; use one of them as the test copy.
 - Schema changes go through `migrate()` / `addColumnIfMissing` in `db.go` (existing DBs must upgrade in place).
 - Remove any test rows you create; never commit `backups/` or `*.db` (already in `.gitignore`).
 - Never sign up a test user on the live DB — it needs a real account to log in, and on a fresh DB the first sign-up takes over all data.
@@ -71,7 +74,8 @@ cd frontend && npx expo start --web --port 8081                                #
 
 - Git Bash mangles Thai in curl command-line args — send JSON bodies from a UTF-8 file (`--data-binary @file`).
 - Files may have CRLF line endings; prefer the Edit tool over `sed`/string replace for multi-line edits.
-- Node is v20 but Expo SDK 58 wants ≥ 22.13: it runs with a warning.
+- Node is managed by nvm-windows; this project uses Node 22 (`nvm use 22.23.4`). `nvm use` switches it machine-wide.
+- Animated values: `useState(() => new Animated.Value(0))[0]`, not `useRef(...).current` (react-hooks/refs lint rule).
 - Theme: `COLORS` (format.ts) is the light or dark palette picked once at startup (`themeStore(.web).ts`); never
   hard-code backgrounds — use `COLORS.card/input/subtle/track/dangerSoft/skeleton`. Changing theme reloads (web).
 - `Alert.alert` is a no-op on react-native-web — use `confirmAsync` / `showInfo` / `showError` from `format.ts`.

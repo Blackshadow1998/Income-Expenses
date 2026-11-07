@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../format';
 
@@ -24,12 +24,13 @@ export function BarChart({ labels, series, values, selected, onSelect, height = 
   const [width, setWidth] = useState(0);
   const max = Math.max(1, ...values.flatMap((v) => series.map((s) => v[s.key] ?? 0)));
   // Bars grow from the axis whenever the data or the series change.
-  const grow = useRef(new Animated.Value(0)).current;
+  const grow = useState(() => new Animated.Value(0))[0];
   const dataKey = JSON.stringify([series.map((s) => s.key), values]);
+  const measured = width > 0;
   useEffect(() => {
     grow.setValue(0);
     Animated.timing(grow, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-  }, [grow, dataKey, width > 0]);
+  }, [grow, dataKey, measured]);
   const colWidth = Math.max(MIN_COL_WIDTH, width / Math.max(1, labels.length));
   const barWidth = Math.max(3, Math.min(18, (colWidth - 4 - 2 * (series.length - 1)) / series.length));
 

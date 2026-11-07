@@ -99,7 +99,7 @@ export default function AccountsScreen() {
       {data?.accounts.length === 0 && (
         <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 24 }}>
           <Text style={{ fontSize: 32 }}>🏦</Text>
-          <Text style={{ color: COLORS.muted, textAlign: 'center' }}>ยังไม่มีบัญชี กด "เพิ่มบัญชี" เพื่อสร้างบัญชีแรก</Text>
+          <Text style={{ color: COLORS.muted, textAlign: 'center' }}>{'ยังไม่มีบัญชี กด "เพิ่มบัญชี" เพื่อสร้างบัญชีแรก'}</Text>
         </Card>
       )}
 

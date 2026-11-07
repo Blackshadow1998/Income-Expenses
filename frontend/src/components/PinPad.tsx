@@ -31,7 +31,9 @@ export function PinPad({
 }) {
   const [digits, setDigits] = useState('');
   const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   const press = useCallback(
     (key: string) => {
@@ -105,7 +107,7 @@ export function PinPad({
 
 /** PIN dot that pops when a digit is entered. */
 function Dot({ filled }: { filled: boolean }) {
-  const v = useRef(new Animated.Value(filled ? 1 : 0)).current;
+  const v = useState(() => new Animated.Value(filled ? 1 : 0))[0];
   useEffect(() => {
     Animated.spring(v, { toValue: filled ? 1 : 0, speed: 30, bounciness: 14, useNativeDriver: Platform.OS !== 'web' }).start();
   }, [v, filled]);

@@ -12,7 +12,7 @@ export function FadeIn({ children, delay = 0, style, from = 14 }: {
   style?: StyleProp<ViewStyle>;
   from?: number; // px to slide up from
 }) {
-  const v = useRef(new Animated.Value(0)).current;
+  const v = useState(() => new Animated.Value(0))[0];
   useEffect(() => {
     Animated.timing(v, {
       toValue: 1,
@@ -38,7 +38,7 @@ export function PressScale({ children, style, containerStyle, scaleTo = 0.96, ..
   containerStyle?: StyleProp<ViewStyle>;
   scaleTo?: number;
 }) {
-  const s = useRef(new Animated.Value(1)).current;
+  const s = useState(() => new Animated.Value(1))[0];
   const spring = (to: number) => Animated.spring(s, { toValue: to, speed: 40, bounciness: 6, useNativeDriver: native }).start();
   return (
     <Pressable
@@ -81,7 +81,7 @@ export function AnimatedNumber({ value, format, style, duration = 700 }: {
 
 /** Grey placeholder block that gently pulses while data loads. */
 export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
-  const v = useRef(new Animated.Value(0.45)).current;
+  const v = useState(() => new Animated.Value(0.45))[0];
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -102,7 +102,7 @@ export function GrowBar({ fraction, color, style, delay = 0 }: {
   style?: StyleProp<ViewStyle>;
   delay?: number;
 }) {
-  const v = useRef(new Animated.Value(0)).current;
+  const v = useState(() => new Animated.Value(0))[0];
   useEffect(() => {
     Animated.timing(v, { toValue: fraction, duration: 650, delay, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [v, fraction, delay]);
@@ -120,7 +120,7 @@ export interface ShakeHandle {
 /** Wrapper that can be told to shake sideways, e.g. on a wrong PIN. */
 export const Shake = forwardRef<ShakeHandle, { children: ReactNode; style?: StyleProp<ViewStyle> }>(
   function Shake({ children, style }, ref) {
-    const x = useRef(new Animated.Value(0)).current;
+    const x = useState(() => new Animated.Value(0))[0];
     useImperativeHandle(ref, () => ({
       shake: () => {
         x.setValue(0);

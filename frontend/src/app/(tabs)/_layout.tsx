@@ -1,11 +1,11 @@
 import { Tabs } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Platform, Text } from 'react-native';
 import { COLORS } from '@/format';
 
 /** Emoji tab icon that pops and gets a tinted pill when its tab is active. */
 function TabIcon({ glyph, focused }: { glyph: string; focused: boolean }) {
-  const v = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const v = useState(() => new Animated.Value(focused ? 1 : 0))[0];
   useEffect(() => {
     Animated.spring(v, { toValue: focused ? 1 : 0, speed: 18, bounciness: 10, useNativeDriver: Platform.OS !== 'web' }).start();
   }, [v, focused]);
@@ -24,7 +24,10 @@ function TabIcon({ glyph, focused }: { glyph: string; focused: boolean }) {
   );
 }
 
-const icon = (glyph: string) => ({ focused }: { focused: boolean }) => <TabIcon glyph={glyph} focused={focused} />;
+const icon = (glyph: string) =>
+  function TabBarIcon({ focused }: { focused: boolean }) {
+    return <TabIcon glyph={glyph} focused={focused} />;
+  };
 
 export default function TabsLayout() {
   return (

@@ -140,6 +140,7 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | GET/PUT/DELETE | `/api/accounts/{id}` | ดู / แก้ไข / ลบ บัญชี |
 | POST | `/api/accounts` | เพิ่มบัญชี `{bank_id, type_id, name, opening_balance}` |
 | GET | `/api/insights?month=YYYY-MM` | สรุปเชิงลึก: เทียบเดือนก่อน, ใช้มากสุด 3 อันดับ, เฉลี่ยต่อวัน, ก้อนใหญ่สุด |
+| GET | `/api/export.csv?from=&to=` | ส่งออกรายการ + การโอน เป็น CSV (UTF-8 BOM เปิดใน Excel ได้) — ปุ่มที่ ตั้งค่า |
 | GET | `/api/debts` | หนี้ค้างต่อคน (ให้ยืม−รับคืน, กู้−คืนเงินกู้) แยกตามช่องผู้รับ |
 | GET/POST | `/api/recurring` | รายการประจำ (สร้างรายการอัตโนมัติทุกเดือนตามวันที่, เริ่มจากวันนี้ ไม่ย้อนหลัง) |
 | PUT/DELETE | `/api/recurring/{id}` | แก้/หยุด (`active:false`)/ลบ — รายการที่สร้างแล้วยังอยู่ |

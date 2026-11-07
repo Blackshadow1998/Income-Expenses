@@ -1,9 +1,24 @@
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { downloadCsv } from '@/api';
 import { useAuth } from '@/auth';
 import { PressScale } from '@/components/motion';
 import { Button, Card } from '@/components/ui';
-import { COLORS, confirmAsync, setThemePref, THEME_PREF, ThemePref } from '@/format';
+import { COLORS, confirmAsync, currentMonth, setThemePref, showError, THEME_PREF, ThemePref } from '@/format';
+
+const EXPORTS: { label: string; range: () => [string, string] }[] = [
+  { label: 'เดือนนี้', range: () => [`${currentMonth()}-01`, ''] },
+  { label: 'ปีนี้', range: () => [`${new Date().getFullYear()}-01-01`, ''] },
+  { label: 'ทั้งหมด', range: () => ['', ''] },
+];
+
+const exportCsv = async ([from, to]: [string, string]) => {
+  try {
+    await downloadCsv(from, to);
+  } catch (e) {
+    showError(e);
+  }
+};
 
 const THEMES: { key: ThemePref; label: string }[] = [
   { key: 'system', label: '📱 ตามเครื่อง' },
@@ -36,6 +51,19 @@ export default function SettingsScreen() {
         <Button title="🎯 งบประมาณรายเดือน" variant="outline" onPress={() => router.push('/budgets')} />
         <Button title="🔁 รายการประจำ" variant="outline" onPress={() => router.push('/recurring')} />
         <Button title="🤝 หนี้ ให้ยืม / กู้" variant="outline" onPress={() => router.push('/debts')} />
+      </Card>
+
+      <Card style={{ gap: 10 }}>
+        <Text style={styles.h2}>📤 ส่งออก Excel / CSV</Text>
+        {Platform.OS === 'web' ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {EXPORTS.map((e) => (
+              <Button key={e.label} title={e.label} small variant="soft" style={{ flex: 1 }} onPress={() => exportCsv(e.range())} />
+            ))}
+          </View>
+        ) : (
+          <Text style={{ color: COLORS.muted, fontSize: 13 }}>ส่งออกได้จากหน้าเว็บ (เปิดผ่านเบราว์เซอร์)</Text>
+        )}
       </Card>
 
       <Card style={{ gap: 10 }}>

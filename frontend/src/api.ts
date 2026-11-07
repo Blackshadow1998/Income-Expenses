@@ -293,6 +293,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/**
+ * Downloads transactions + transfers in [from, to] as a CSV file (opens in Excel). Web only: the
+ * request needs the Authorization header, so it is fetched and saved through a temporary link.
+ */
+export async function downloadCsv(from = '', to = '') {
+  await api.auth.ping(); // waits for the PIN first if the app is locked
+  const res = await fetch(`${API_URL}/api/export.csv?from=${from}&to=${to}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(`ส่งออกไม่สำเร็จ (HTTP ${res.status})`, res.status);
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'income-expenses.csv';
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 const post = (body?: unknown): RequestInit => ({ method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {

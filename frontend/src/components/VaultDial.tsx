@@ -19,16 +19,27 @@ export type DialMode = 'idle' | 'granted' | 'denied';
 
 const TICKS = 12;
 
+/** Dial geometry: centre, outer ring radius (room left for ticks and pointer), core radius, ring width. */
+function geometry(size: number, length: number) {
+  const c = size / 2;
+  const outer = c - 20;
+  const core = size * 0.14;
+  return { c, outer, core, t: (outer - core) / length };
+}
+
+/** Where ring `i`'s digit under the pointer sits, from the dial's top-left corner. */
+export function ringTop(size: number, length: number, i: number) {
+  const { c, outer, t } = geometry(size, length);
+  return { x: c, y: c - (outer - i * t - t / 2) };
+}
+
 /**
  * Safe-dial PIN display: one ring of digits 0–9 per PIN digit. Entering a digit spins its ring until
  * that digit sits under the pointer and lights the ring gold; a moment later the ring's numbers fade so
  * the PIN can't be read off the screen. `granted` turns the core into a glowing check, `denied` red.
  */
 export function VaultDial({ digits, length, mode, size }: { digits: string; length: number; mode: DialMode; size: number }) {
-  const c = size / 2;
-  const outer = c - 20; // room for the ticks and pointer
-  const core = size * 0.14;
-  const t = (outer - core) / length;
+  const { c, outer, core, t } = geometry(size, length);
   const color = mode === 'denied' ? VAULT.red : VAULT.gold;
 
   const angles = useState(() => Array.from({ length }, () => new Animated.Value(0)))[0];

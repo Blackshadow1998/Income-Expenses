@@ -50,6 +50,14 @@ cd frontend && npx expo start --web --port 8081                                #
 - Sign-in methods live in `identities` (`provider`, `subject`) so Google sign-in can be added later without touching `users`.
 - Slip images are served via signed short-lived links (`image_url`), not the session token.
 
+## Branches
+
+- **`dev`** — day-to-day work: commit and push here.
+- **`main`** — the stable system. The live container on this PC must run `main`.
+- Test on `dev` against a copy of the data (test image on another port, e.g. :8090). When the owner says it is
+  stable: merge `dev` → `main` (fast-forward), deploy from `main` (`git checkout main` →
+  `docker compose up -d --build` → `git checkout dev`). Never deploy the live container from `dev`.
+
 ## Working on the owner's data
 
 - The Docker volume holds the owner's **real** data. Back up before schema changes:

@@ -1,16 +1,25 @@
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, LayoutRectangle, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { FadeIn, GridLoader, PressScale, Shake, ShakeHandle } from './motion';
 import { ringTop, VAULT, VaultDial } from './VaultDial';
 
 export const PIN_LENGTH = 6;
 
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
-const KEY = 70;
-const COL_GAP = 14;
-const ROW_GAP = 12;
+// Digit keys sit on a circle around the dial, clockwise from 1 (just right of the pointer) to 0 (just left).
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
 type Point = { x: number; y: number };
+
+/** Face layout for a square of `face` px: key size, centre of each key, dial size inside the key circle. */
+function faceGeometry(face: number) {
+  const key = Math.round(Math.min(60, Math.max(48, face * 0.16)));
+  const r = face / 2 - key / 2;
+  const keyCentre = (i: number): Point => {
+    const a = ((-72 + i * 36) * Math.PI) / 180;
+    return { x: face / 2 + r * Math.cos(a), y: face / 2 + r * Math.sin(a) };
+  };
+  return { key, keyCentre, dial: Math.round(2 * (r - key / 2 - 8)) };
+}
 /** A digit flying from its key into the dial ('in') or dropping out of it on delete ('out'). */
 type Flight = { id: number; digit: string; from: Point; to: Point; kind: 'in' | 'out'; delay: number };
 
@@ -40,8 +49,10 @@ export function PinPad({
 }) {
   const [digits, setDigits] = useState('');
   const { width, height } = useWindowDimensions();
-  // Dial + keypad must fit one screen: the keypad, status line and footer take about 470 px.
-  const dialSize = Math.max(220, Math.min(340, width - 40, height - 470));
+  // The dial with its ring of keys is one square; the status line and footer below take about 200 px.
+  const faceSize = Math.max(280, Math.min(368, width - 32, height - 200));
+  const { key: KEY, keyCentre, dial: dialSize } = useMemo(() => faceGeometry(faceSize), [faceSize]);
+  const keyShape = { width: KEY, height: KEY, borderRadius: KEY / 2 };
 
   // The title starts as a card in the middle of the screen; a tap or a key press puts it away, and it
   // comes back when the title changes (e.g. "confirm PIN" while setting one up).
@@ -53,9 +64,8 @@ export function PinPad({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // Where the dial and keypad sit inside the pad, for the flying digits.
-  const dialBox = useRef<LayoutRectangle | null>(null);
-  const padBox = useRef<LayoutRectangle | null>(null);
+  // Where the face (dial + keys) sits inside the pad, for the flying digits.
+  const faceBox = useRef<LayoutRectangle | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const nextFlight = useRef(0);
   const launch = useCallback((digit: string, from: Point, to: Point, kind: Flight['kind'], delay = 0) => {
@@ -64,19 +74,24 @@ export function PinPad({
   const landed = useCallback((id: number) => setFlights((list) => list.filter((f) => f.id !== id)), []);
   const ringAt = useCallback(
     (i: number): Point | null => {
-      const d = dialBox.current;
-      if (!d) return null;
+      const f = faceBox.current;
+      if (!f) return null;
       const p = ringTop(dialSize, PIN_LENGTH, i);
-      return { x: d.x + p.x, y: d.y + p.y };
+      const off = (faceSize - dialSize) / 2;
+      return { x: f.x + off + p.x, y: f.y + off + p.y };
     },
-    [dialSize],
+    [dialSize, faceSize],
   );
-  const keyAt = useCallback((key: string): Point | null => {
-    const p = padBox.current;
-    const i = KEYS.indexOf(key);
-    if (!p || i < 0) return null;
-    return { x: p.x + (i % 3) * (KEY + COL_GAP) + KEY / 2, y: p.y + Math.floor(i / 3) * (KEY + ROW_GAP) + KEY / 2 };
-  }, []);
+  const keyAt = useCallback(
+    (key: string): Point | null => {
+      const f = faceBox.current;
+      const i = KEYS.indexOf(key);
+      if (!f || i < 0) return null;
+      const p = keyCentre(i);
+      return { x: f.x + p.x, y: f.y + p.y };
+    },
+    [keyCentre],
+  );
 
   // Kept in step with `digits` by the handlers, so quick key presses see the latest value.
   const digitsRef = useRef('');
@@ -132,15 +147,44 @@ export function PinPad({
 
   return (
     <FadeIn style={styles.wrap}>
-      <View onLayout={(e) => (dialBox.current = e.nativeEvent.layout)}>
-        <Shake ref={shaker}>
-          <VaultDial
-            digits={digits}
-            length={PIN_LENGTH}
-            size={dialSize}
-            mode={granted ? 'granted' : error && digits.length === 0 ? 'denied' : 'idle'}
-          />
-        </Shake>
+      <View style={{ width: faceSize, height: faceSize }} onLayout={(e) => (faceBox.current = e.nativeEvent.layout)}>
+        <View style={[styles.dial, { top: (faceSize - dialSize) / 2, left: (faceSize - dialSize) / 2 }]}>
+          <Shake ref={shaker}>
+            <VaultDial
+              digits={digits}
+              length={PIN_LENGTH}
+              size={dialSize}
+              mode={granted ? 'granted' : error && digits.length === 0 ? 'denied' : 'idle'}
+            />
+          </Shake>
+        </View>
+        {KEYS.map((k, i) => {
+          const p = keyCentre(i);
+          return (
+            <PressScale
+              key={k}
+              onPress={() => press(k)}
+              accessibilityLabel={k}
+              scaleTo={0.88}
+              containerStyle={[styles.keySpot, { left: p.x - KEY / 2, top: p.y - KEY / 2 }]}
+              style={[styles.key, styles.keyDigit, keyShape]}
+            >
+              <Text style={[styles.keyText, { fontSize: Math.round(KEY * 0.4) }]}>{k}</Text>
+            </PressScale>
+          );
+        })}
+        {/* Delete sits in the bottom-right corner, outside the circle of keys. */}
+        <PressScale
+          onPress={() => press('⌫')}
+          onLongPress={() => press('clear')}
+          disabled={digits.length === 0 || granted}
+          accessibilityLabel="ลบตัวเลข (กดค้างเพื่อลบทั้งหมด)"
+          scaleTo={0.88}
+          containerStyle={[styles.keySpot, { right: 0, bottom: 0 }]}
+          style={[styles.key, styles.keyDelete, keyShape]}
+        >
+          <DeleteIcon />
+        </PressScale>
       </View>
       <View style={styles.status}>
         {granted ? (
@@ -149,30 +193,6 @@ export function PinPad({
           <GridLoader size={22} />
         ) : (
           !!error && <Text style={styles.error}>{error}</Text>
-        )}
-      </View>
-
-      <View style={styles.keypad} onLayout={(e) => (padBox.current = e.nativeEvent.layout)}>
-        {KEYS.map((k, i) =>
-          k === '' ? (
-            <View key={i} style={styles.key} />
-          ) : k === '⌫' ? (
-            <PressScale
-              key={i}
-              onPress={() => press('⌫')}
-              onLongPress={() => press('clear')}
-              disabled={digits.length === 0 || granted}
-              accessibilityLabel="ลบตัวเลข (กดค้างเพื่อลบทั้งหมด)"
-              scaleTo={0.88}
-              style={[styles.key, styles.keyDelete]}
-            >
-              <DeleteIcon />
-            </PressScale>
-          ) : (
-            <PressScale key={i} onPress={() => press(k)} accessibilityLabel={k} scaleTo={0.88} style={[styles.key, styles.keyDigit]}>
-              <Text style={styles.keyText}>{k}</Text>
-            </PressScale>
-          ),
         )}
       </View>
       {footer}
@@ -296,8 +316,9 @@ const styles = StyleSheet.create({
     boxShadow: '0px 0px 40px rgba(233, 181, 98, 0.18)',
   },
   tapHint: { marginTop: 6, color: VAULT.gold, fontWeight: '700', fontSize: 13 },
-  keypad: { flexDirection: 'row', flexWrap: 'wrap', width: 3 * KEY + 2 * COL_GAP, rowGap: ROW_GAP, columnGap: COL_GAP }, // 3 keys per row
-  key: { width: KEY, height: KEY, borderRadius: KEY / 2, alignItems: 'center', justifyContent: 'center' },
+  dial: { position: 'absolute' },
+  keySpot: { position: 'absolute' },
+  key: { alignItems: 'center', justifyContent: 'center' },
   flying: {
     position: 'absolute',
     width: 40,

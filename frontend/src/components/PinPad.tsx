@@ -5,8 +5,17 @@ import { ringTop, VAULT, VaultDial } from './VaultDial';
 
 export const PIN_LENGTH = 6;
 
-// Digit keys sit on a circle around the dial, clockwise from 1 (just right of the pointer) to 0 (just left).
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+// Digit keys sit on a circle around the dial, clockwise from just right of the pointer to just left of it,
+// in a new random order for every PIN entry so the finger positions don't give the PIN away.
+const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+function shuffled() {
+  const a = [...DIGITS];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 type Point = { x: number; y: number };
 
@@ -48,6 +57,7 @@ export function PinPad({
   listenKeys?: boolean;
 }) {
   const [digits, setDigits] = useState('');
+  const [keys, setKeys] = useState(shuffled); // reshuffled after every complete PIN
   const { width, height } = useWindowDimensions();
   // The dial with its ring of keys is one square; the status line and footer below take about 200 px.
   const faceSize = Math.max(280, Math.min(368, width - 32, height - 200));
@@ -85,12 +95,12 @@ export function PinPad({
   const keyAt = useCallback(
     (key: string): Point | null => {
       const f = faceBox.current;
-      const i = KEYS.indexOf(key);
+      const i = keys.indexOf(key);
       if (!f || i < 0) return null;
       const p = keyCentre(i);
       return { x: f.x + p.x, y: f.y + p.y };
     },
-    [keyCentre],
+    [keyCentre, keys],
   );
 
   // Kept in step with `digits` by the handlers, so quick key presses see the latest value.
@@ -127,6 +137,7 @@ export function PinPad({
     Promise.resolve(onCompleteRef.current(digits)).finally(() => {
       digitsRef.current = '';
       setDigits('');
+      setKeys(shuffled());
     });
   }, [digits]);
 
@@ -158,7 +169,7 @@ export function PinPad({
             />
           </Shake>
         </View>
-        {KEYS.map((k, i) => {
+        {keys.map((k, i) => {
           const p = keyCentre(i);
           return (
             <PressScale

@@ -7,18 +7,18 @@ import (
 
 func TestSearchTransactions(t *testing.T) {
 	c, _ := newTestServer(t)
-	owner := c.signedIn("owner")
+	owner := c.SignedIn("owner")
 	for _, tx := range []map[string]any{
 		{"date": "2026-10-03", "category_id": 2, "account_id": 1, "amount": 120, "note": "ข้าวมันไก่", "payee": "ร้านป้า"},
 		{"date": "2026-11-04", "category_id": 2, "account_id": 1, "amount": 900, "note": "Shopee เสื้อ"},
 		{"date": "2026-11-05", "category_id": 1, "account_id": 1, "amount": 5000, "note": "โบนัส"},
 	} {
-		if status, out := c.do("POST", "/api/transactions", owner, tx); status != http.StatusCreated {
+		if status, out := c.Do("POST", "/api/transactions", owner, tx); status != http.StatusCreated {
 			t.Fatalf("add: %d %v", status, out)
 		}
 	}
 	count := func(query string) int {
-		status, out := c.do("GET", "/api/transactions/search?"+query, owner, nil)
+		status, out := c.Do("GET", "/api/transactions/search?"+query, owner, nil)
 		if status != http.StatusOK {
 			t.Fatalf("search %q: %d %v", query, status, out)
 		}
@@ -39,11 +39,11 @@ func TestSearchTransactions(t *testing.T) {
 			t.Errorf("search %q: %d results, want %d", q, got, want)
 		}
 	}
-	other := c.signedIn("other")
-	if _, out := c.do("GET", "/api/transactions/search", other, nil); len(out["items"].([]any)) != 0 {
+	other := c.SignedIn("other")
+	if _, out := c.Do("GET", "/api/transactions/search", other, nil); len(out["items"].([]any)) != 0 {
 		t.Fatal("other user sees results")
 	}
-	if status, _ := c.do("GET", "/api/transactions/search?from=nope", owner, nil); status != http.StatusBadRequest {
+	if status, _ := c.Do("GET", "/api/transactions/search?from=nope", owner, nil); status != http.StatusBadRequest {
 		t.Fatalf("bad date: %d", status)
 	}
 }

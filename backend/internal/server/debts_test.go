@@ -7,10 +7,10 @@ import (
 
 func TestDebtsPerPerson(t *testing.T) {
 	c, db := newTestServer(t)
-	owner := c.signedIn("owner")
+	owner := c.SignedIn("owner")
 	ids := map[string]float64{}
 	var cats []map[string]any
-	c.doInto("GET", "/api/categories", owner, nil, &cats)
+	c.DoInto("GET", "/api/categories", owner, nil, &cats)
 	for _, cat := range cats {
 		ids[cat["code"].(string)] = cat["id"].(float64)
 	}
@@ -18,7 +18,7 @@ func TestDebtsPerPerson(t *testing.T) {
 		t.Fatalf("repayment categories missing: %v", ids)
 	}
 	add := func(code, payee string, amount float64, date string) {
-		if status, out := c.do("POST", "/api/transactions", owner, map[string]any{
+		if status, out := c.Do("POST", "/api/transactions", owner, map[string]any{
 			"date": date, "category_id": ids[code], "account_id": 1, "amount": amount, "payee": payee,
 		}); status != http.StatusCreated {
 			t.Fatalf("add %s: %d %v", code, status, out)
@@ -30,7 +30,7 @@ func TestDebtsPerPerson(t *testing.T) {
 	add("borrow_repay", "แม่", 2000, "2026-11-04")
 
 	var debts []map[string]any
-	c.doInto("GET", "/api/debts", owner, nil, &debts)
+	c.DoInto("GET", "/api/debts", owner, nil, &debts)
 	byPerson := map[string]map[string]any{}
 	for _, d := range debts {
 		byPerson[d["person"].(string)] = d
@@ -47,8 +47,8 @@ func TestDebtsPerPerson(t *testing.T) {
 		t.Fatalf("categories = %d, want 6", n)
 	}
 
-	other := c.signedIn("other")
-	c.doInto("GET", "/api/debts", other, nil, &debts)
+	other := c.SignedIn("other")
+	c.DoInto("GET", "/api/debts", other, nil, &debts)
 	if len(debts) != 0 {
 		t.Fatalf("other user sees debts: %v", debts)
 	}

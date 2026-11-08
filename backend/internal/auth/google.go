@@ -1,4 +1,4 @@
-package server
+package auth
 
 import (
 	"context"
@@ -57,11 +57,11 @@ func verifyGoogleToken(ctx context.Context, clientID, idToken string) (googleCla
 }
 
 // authConfig tells the app which optional sign-in methods are on.
-func (a *API) authConfig(w http.ResponseWriter, r *http.Request) {
+func (a *Service) authConfig(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"google_client_id": a.googleClientID})
 }
 
-func (a *API) googleClaimsFrom(w http.ResponseWriter, r *http.Request) (googleClaims, bool) {
+func (a *Service) googleClaimsFrom(w http.ResponseWriter, r *http.Request) (googleClaims, bool) {
 	if a.googleClientID == "" {
 		httpx.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "ยังไม่ได้เปิดใช้การเข้าสู่ระบบด้วย Google"})
 		return googleClaims{}, false
@@ -84,7 +84,7 @@ func (a *API) googleClaimsFrom(w http.ResponseWriter, r *http.Request) (googleCl
 
 // googleSignIn signs in the user linked to the Google account, or creates a new user for it
 // (the same as signing up, then they set a PIN).
-func (a *API) googleSignIn(w http.ResponseWriter, r *http.Request) {
+func (a *Service) googleSignIn(w http.ResponseWriter, r *http.Request) {
 	c, ok := a.googleClaimsFrom(w, r)
 	if !ok {
 		return
@@ -130,7 +130,7 @@ func (a *API) googleSignIn(w http.ResponseWriter, r *http.Request) {
 }
 
 // linkGoogle adds Google sign-in to the signed-in (unlocked) user.
-func (a *API) linkGoogle(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) linkGoogle(w http.ResponseWriter, r *http.Request, s *session) {
 	if !a.extendUnlock(w, r, s) {
 		return
 	}

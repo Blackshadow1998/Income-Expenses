@@ -203,7 +203,7 @@ func (a *API) deleteTransfer(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, err)
 		return
 	}
-	a.removeSlipFile(slipFile)
+	a.images.Remove(slipFile)
 	w.WriteHeader(http.StatusNoContent)
 }
 

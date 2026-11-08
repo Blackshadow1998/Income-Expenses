@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -62,7 +61,7 @@ func (a *API) scanSlip(s scanner) (Slip, error) {
 	err := s.Scan(&sl.ID, &sl.Date, &sl.DateFound, &satang, &sl.FromName, &sl.ToName, &sl.Ref,
 		&sl.BankID, &sl.BankName, &sl.ToBankID, &sl.ToBankName, &sl.OCRText, &sl.Status, &sl.TransactionID)
 	sl.Amount = money.FromSatang(satang)
-	sl.ImageURL = a.slipImageURL(sl.ID)
+	sl.ImageURL = a.images.Link("/api/slips/%d/image", "slip", sl.ID)
 	return sl, err
 }
 
@@ -178,7 +177,7 @@ func (a *API) saveSlip(ctx context.Context, uid int64, name string, data []byte)
 
 	// Per-user file name: two users may upload the same image (e.g. both sides of one transfer).
 	fileName := strconv.FormatInt(uid, 10) + "-" + hash[:24] + ext
-	path := filepath.Join(a.slipsDir, fileName)
+	path := a.images.Path(fileName)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		logx.Logger.Printf("write slip: %v", err)
 		res.Error = "บันทึกรูปไม่สำเร็จ"
@@ -267,7 +266,7 @@ func (a *API) slipImage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !a.validImageSig(r, id) {
+	if !a.images.Valid(r, "slip", id) {
 		httpx.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "ลิงก์รูปสลิปหมดอายุ กรุณาเปิดหน้าใหม่"})
 		return
 	}
@@ -282,7 +281,7 @@ func (a *API) slipImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	http.ServeFile(w, r, filepath.Join(a.slipsDir, filepath.Base(file)))
+	http.ServeFile(w, r, a.images.Path(file))
 }
 
 // deleteSlip removes a pending slip and its image. Confirmed slips are removed
@@ -312,7 +311,7 @@ func (a *API) deleteSlip(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, err)
 		return
 	}
-	a.removeSlipFile(file)
+	a.images.Remove(file)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -390,13 +389,4 @@ func ReparsePendingSlips(ctx context.Context, db *sql.DB) (int, error) {
 		updated++
 	}
 	return updated, nil
-}
-
-func (a *API) removeSlipFile(file string) {
-	if file == "" {
-		return
-	}
-	if err := os.Remove(filepath.Join(a.slipsDir, filepath.Base(file))); err != nil && !os.IsNotExist(err) {
-		logx.Logger.Printf("remove slip image: %v", err)
-	}
 }

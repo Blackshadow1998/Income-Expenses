@@ -1,10 +1,11 @@
-package server
+// Package trip is trip bill splitting: a trip has members (plain names), bills shared between them
+// and payments made to settle up. Who owes whom is always worked out from bills and payments (package
+// split), never stored. Payment slips and bill photos live in the images folder as trip-* files.
+package trip
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -13,18 +14,52 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"income-expenses/internal/auth"
 	"income-expenses/internal/httpx"
+	"income-expenses/internal/images"
 	"income-expenses/internal/money"
 	"income-expenses/internal/split"
 )
 
-// Trip bill splitting: a trip has members (plain names), bills shared between them and payments
-// made to settle up. Who owes whom is always worked out from bills and payments (package split).
+type Service struct {
+	db     *sql.DB
+	images *images.Store
+}
+
+func New(db *sql.DB, img *images.Store) *Service { return &Service{db: db, images: img} }
+
+// Register adds the trip routes; guard (auth.RequireUnlocked) protects every one except the signed
+// image links.
+func (a *Service) Register(mux *http.ServeMux, guard func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("GET /api/trip-payments/{id}/slip", a.tripSlipImage) // signed link instead of a session
+	mux.HandleFunc("GET /api/trip-bills/{id}/image", a.tripBillImage)   // likewise
+	data := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, guard(h)) }
+	data("GET /api/trips", a.listTrips)
+	data("POST /api/trips", a.createTrip)
+	data("GET /api/trips/{id}", a.getTrip)
+	data("PUT /api/trips/{id}", a.updateTrip)
+	data("DELETE /api/trips/{id}", a.deleteTrip)
+	data("POST /api/trips/{id}/members", a.addTripMember)
+	data("DELETE /api/trips/{id}/members/{member}", a.deleteTripMember)
+	data("GET /api/trips/{id}/bills", a.listTripBills)
+	data("POST /api/trips/{id}/bills", a.createTripBill)
+	data("PUT /api/bills/{id}", a.updateTripBill)
+	data("DELETE /api/bills/{id}", a.deleteTripBill)
+	data("PUT /api/bills/{id}/image", a.setTripBillImage)
+	data("DELETE /api/bills/{id}/image", a.setTripBillImage)
+	data("GET /api/trips/{id}/summary", a.tripSummary)
+	data("GET /api/trips/{id}/payments", a.listTripPayments)
+	data("POST /api/trips/{id}/payments", a.createTripPayment)
+	data("PATCH /api/payments/{id}", a.updateTripPayment)
+	data("DELETE /api/payments/{id}", a.deleteTripPayment)
+	data("PUT /api/payments/{id}/slip", a.setTripPaymentSlip)
+	data("DELETE /api/payments/{id}/slip", a.setTripPaymentSlip)
+	data("POST /api/trip-ocr", a.tripOCR)
+}
 
 type TripMember struct {
 	ID   int64  `json:"id"`
@@ -81,14 +116,14 @@ type tripData struct {
 	names    map[int64]string
 }
 
-func (a *API) ownsTrip(ctx context.Context, uid, tripID int64) (bool, error) {
+func (a *Service) ownsTrip(ctx context.Context, uid, tripID int64) (bool, error) {
 	var ok bool
 	err := a.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM trips WHERE id = ? AND user_id = ?)`, tripID, uid).Scan(&ok)
 	return ok, err
 }
 
 // tripOf returns the trip a bill or payment belongs to, when the user owns it (0 otherwise).
-func (a *API) tripOf(ctx context.Context, uid int64, table string, id int64) (int64, error) {
+func (a *Service) tripOf(ctx context.Context, uid int64, table string, id int64) (int64, error) {
 	var tripID int64
 	err := a.db.QueryRowContext(ctx, `SELECT x.trip_id FROM `+table+` x JOIN trips t ON t.id = x.trip_id WHERE x.id = ? AND t.user_id = ?`,
 		id, uid).Scan(&tripID)
@@ -99,7 +134,7 @@ func (a *API) tripOf(ctx context.Context, uid int64, table string, id int64) (in
 }
 
 // loadTrip reads a trip with its members, bills and payments; sql.ErrNoRows when it isn't the user's.
-func (a *API) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
+func (a *Service) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
 	t := &tripData{names: map[int64]string{}}
 	err := a.db.QueryRowContext(ctx, `SELECT id, name, created_at FROM trips WHERE id = ? AND user_id = ?`, id, uid).
 		Scan(&t.ID, &t.Name, &t.CreatedAt)
@@ -143,7 +178,7 @@ func (a *API) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
 		if n := len(t.Bills); n == 0 || t.Bills[n-1].ID != b.ID {
 			b.Amount = money.FromSatang(amount)
 			if image != "" {
-				b.ImageURL = a.tripImageURL(billImage, b.ID)
+				b.ImageURL = a.images.Link(billImage.path, billImage.sig, b.ID)
 			}
 			t.Bills = append(t.Bills, b)
 			t.bills = append(t.bills, split.Bill{Payer: b.PayerID, Amount: amount, Mode: b.SplitMode})
@@ -189,7 +224,7 @@ func (a *API) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
 		p.Amount = money.FromSatang(amount)
 		p.Confirmed = p.ConfirmedAt != ""
 		if slip != "" {
-			p.SlipURL = a.tripImageURL(paymentSlip, p.ID)
+			p.SlipURL = a.images.Link(paymentSlip.path, paymentSlip.sig, p.ID)
 		}
 		t.Payments = append(t.Payments, p)
 		t.payments = append(t.payments, split.Payment{From: p.From, To: p.To, Amount: amount})
@@ -197,13 +232,13 @@ func (a *API) loadTrip(ctx context.Context, uid, id int64) (*tripData, error) {
 	return t, rows.Err()
 }
 
-func (a *API) listTrips(w http.ResponseWriter, r *http.Request) {
+func (a *Service) listTrips(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
 		SELECT t.id, t.name, t.created_at,
 		       (SELECT COUNT(*) FROM trip_members m WHERE m.trip_id = t.id),
 		       (SELECT COUNT(*) FROM trip_bills b WHERE b.trip_id = t.id),
 		       (SELECT COALESCE(SUM(amount_satang), 0) FROM trip_bills b WHERE b.trip_id = t.id)
-		FROM trips t WHERE t.user_id = ? ORDER BY t.id DESC`, userID(r))
+		FROM trips t WHERE t.user_id = ? ORDER BY t.id DESC`, auth.UserID(r))
 	if err != nil {
 		httpx.ServerError(w, err)
 		return
@@ -237,7 +272,7 @@ func tidyName(s string, max int) (string, bool) {
 	return s, n > 0 && n <= max
 }
 
-func (a *API) createTrip(w http.ResponseWriter, r *http.Request) {
+func (a *Service) createTrip(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name    string   `json:"name"`
 		Members []string `json:"members"`
@@ -267,7 +302,7 @@ func (a *API) createTrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(r.Context(), `INSERT INTO trips (user_id, name) VALUES (?, ?)`, userID(r), name)
+	res, err := tx.ExecContext(r.Context(), `INSERT INTO trips (user_id, name) VALUES (?, ?)`, auth.UserID(r), name)
 	if err != nil {
 		httpx.ServerError(w, err)
 		return
@@ -286,8 +321,8 @@ func (a *API) createTrip(w http.ResponseWriter, r *http.Request) {
 	a.respondTrip(w, r, id, http.StatusCreated)
 }
 
-func (a *API) respondTrip(w http.ResponseWriter, r *http.Request, id int64, status int) {
-	t, err := a.loadTrip(r.Context(), userID(r), id)
+func (a *Service) respondTrip(w http.ResponseWriter, r *http.Request, id int64, status int) {
+	t, err := a.loadTrip(r.Context(), auth.UserID(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.NotFound(w)
 		return
@@ -299,13 +334,13 @@ func (a *API) respondTrip(w http.ResponseWriter, r *http.Request, id int64, stat
 	httpx.WriteJSON(w, status, t.Trip)
 }
 
-func (a *API) getTrip(w http.ResponseWriter, r *http.Request) {
+func (a *Service) getTrip(w http.ResponseWriter, r *http.Request) {
 	if id, ok := httpx.PathID(w, r); ok {
 		a.respondTrip(w, r, id, http.StatusOK)
 	}
 }
 
-func (a *API) updateTrip(w http.ResponseWriter, r *http.Request) {
+func (a *Service) updateTrip(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
@@ -322,7 +357,7 @@ func (a *API) updateTrip(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, "กรุณาตั้งชื่อทริป (ไม่เกิน 60 ตัวอักษร)")
 		return
 	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE trips SET name = ? WHERE id = ? AND user_id = ?`, name, id, userID(r))
+	res, err := a.db.ExecContext(r.Context(), `UPDATE trips SET name = ? WHERE id = ? AND user_id = ?`, name, id, auth.UserID(r))
 	if err != nil {
 		httpx.ServerError(w, err)
 		return
@@ -334,7 +369,7 @@ func (a *API) updateTrip(w http.ResponseWriter, r *http.Request) {
 	a.respondTrip(w, r, id, http.StatusOK)
 }
 
-func (a *API) deleteTrip(w http.ResponseWriter, r *http.Request) {
+func (a *Service) deleteTrip(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
@@ -361,12 +396,12 @@ func (a *API) deleteTrip(w http.ResponseWriter, r *http.Request) {
 		`DELETE FROM trip_payments WHERE trip_id = ?1 AND trip_id IN (SELECT id FROM trips WHERE user_id = ?2)`,
 		`DELETE FROM trip_bills WHERE trip_id = ?1 AND trip_id IN (SELECT id FROM trips WHERE user_id = ?2)`,
 	} {
-		if _, err := tx.ExecContext(r.Context(), q, id, userID(r)); err != nil {
+		if _, err := tx.ExecContext(r.Context(), q, id, auth.UserID(r)); err != nil {
 			httpx.ServerError(w, err)
 			return
 		}
 	}
-	res, err := tx.ExecContext(r.Context(), `DELETE FROM trips WHERE id = ? AND user_id = ?`, id, userID(r))
+	res, err := tx.ExecContext(r.Context(), `DELETE FROM trips WHERE id = ? AND user_id = ?`, id, auth.UserID(r))
 	if err != nil {
 		httpx.ServerError(w, err)
 		return
@@ -380,12 +415,12 @@ func (a *API) deleteTrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, f := range files {
-		a.removeSlipFile(f)
+		a.images.Remove(f)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) addTripMember(w http.ResponseWriter, r *http.Request) {
+func (a *Service) addTripMember(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
@@ -402,7 +437,7 @@ func (a *API) addTripMember(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, "กรุณาใส่ชื่อสมาชิก (ไม่เกิน 40 ตัวอักษร)")
 		return
 	}
-	if owns, err := a.ownsTrip(r.Context(), userID(r), id); err != nil || !owns {
+	if owns, err := a.ownsTrip(r.Context(), auth.UserID(r), id); err != nil || !owns {
 		if err != nil {
 			httpx.ServerError(w, err)
 		} else {
@@ -424,7 +459,7 @@ func (a *API) addTripMember(w http.ResponseWriter, r *http.Request) {
 	a.respondTrip(w, r, id, http.StatusCreated)
 }
 
-func (a *API) deleteTripMember(w http.ResponseWriter, r *http.Request) {
+func (a *Service) deleteTripMember(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
@@ -434,7 +469,7 @@ func (a *API) deleteTripMember(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, "invalid member id")
 		return
 	}
-	if owns, err := a.ownsTrip(r.Context(), userID(r), id); err != nil || !owns {
+	if owns, err := a.ownsTrip(r.Context(), auth.UserID(r), id); err != nil || !owns {
 		if err != nil {
 			httpx.ServerError(w, err)
 		} else {
@@ -480,7 +515,7 @@ type tripBillInput struct {
 }
 
 // decodeBill validates a bill against the trip's members and returns it with values in satang/weights.
-func (a *API) decodeBill(w http.ResponseWriter, r *http.Request, tripID int64) (tripBillInput, split.Bill, bool) {
+func (a *Service) decodeBill(w http.ResponseWriter, r *http.Request, tripID int64) (tripBillInput, split.Bill, bool) {
 	var in tripBillInput
 	var b split.Bill
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -558,12 +593,12 @@ func writeBillParts(ctx context.Context, tx *sql.Tx, billID int64, b split.Bill)
 	return nil
 }
 
-func (a *API) listTripBills(w http.ResponseWriter, r *http.Request) {
+func (a *Service) listTripBills(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	t, err := a.loadTrip(r.Context(), userID(r), id)
+	t, err := a.loadTrip(r.Context(), auth.UserID(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.NotFound(w)
 		return
@@ -575,12 +610,12 @@ func (a *API) listTripBills(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, t.Bills)
 }
 
-func (a *API) createTripBill(w http.ResponseWriter, r *http.Request) {
+func (a *Service) createTripBill(w http.ResponseWriter, r *http.Request) {
 	tripID, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	if owns, err := a.ownsTrip(r.Context(), userID(r), tripID); err != nil || !owns {
+	if owns, err := a.ownsTrip(r.Context(), auth.UserID(r), tripID); err != nil || !owns {
 		if err != nil {
 			httpx.ServerError(w, err)
 		} else {
@@ -617,12 +652,12 @@ func (a *API) createTripBill(w http.ResponseWriter, r *http.Request) {
 	a.respondTrip(w, r, tripID, http.StatusCreated)
 }
 
-func (a *API) updateTripBill(w http.ResponseWriter, r *http.Request) {
+func (a *Service) updateTripBill(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	tripID, err := a.tripOf(r.Context(), userID(r), "trip_bills", id)
+	tripID, err := a.tripOf(r.Context(), auth.UserID(r), "trip_bills", id)
 	if err != nil || tripID == 0 {
 		if err != nil {
 			httpx.ServerError(w, err)
@@ -658,12 +693,12 @@ func (a *API) updateTripBill(w http.ResponseWriter, r *http.Request) {
 	a.respondTrip(w, r, tripID, http.StatusOK)
 }
 
-func (a *API) deleteTripBill(w http.ResponseWriter, r *http.Request) {
+func (a *Service) deleteTripBill(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	tripID, err := a.tripOf(r.Context(), userID(r), "trip_bills", id)
+	tripID, err := a.tripOf(r.Context(), auth.UserID(r), "trip_bills", id)
 	if err != nil || tripID == 0 {
 		if err != nil {
 			httpx.ServerError(w, err)
@@ -682,7 +717,7 @@ func (a *API) deleteTripBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, f := range files {
-		a.removeSlipFile(f)
+		a.images.Remove(f)
 	}
 	a.respondTrip(w, r, tripID, http.StatusOK)
 }
@@ -714,7 +749,7 @@ type tripPair struct {
 	Status    string  `json:"status"` // unpaid | partial | paid
 }
 
-func (a *API) tripSummary(w http.ResponseWriter, r *http.Request) {
+func (a *Service) tripSummary(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
@@ -727,7 +762,7 @@ func (a *API) tripSummary(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, "mode must be pairwise or minimal")
 		return
 	}
-	t, err := a.loadTrip(r.Context(), userID(r), id)
+	t, err := a.loadTrip(r.Context(), auth.UserID(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.NotFound(w)
 		return
@@ -801,12 +836,12 @@ func (a *API) tripSummary(w http.ResponseWriter, r *http.Request) {
 
 // --- Payments ---
 
-func (a *API) listTripPayments(w http.ResponseWriter, r *http.Request) {
+func (a *Service) listTripPayments(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	t, err := a.loadTrip(r.Context(), userID(r), id)
+	t, err := a.loadTrip(r.Context(), auth.UserID(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.NotFound(w)
 		return
@@ -819,7 +854,7 @@ func (a *API) listTripPayments(w http.ResponseWriter, r *http.Request) {
 }
 
 // tripMembersOK checks that both members belong to the trip and differ.
-func (a *API) tripMembersOK(ctx context.Context, tripID, from, to int64) (bool, error) {
+func (a *Service) tripMembersOK(ctx context.Context, tripID, from, to int64) (bool, error) {
 	if from == to {
 		return false, nil
 	}
@@ -855,7 +890,7 @@ func readTripImage(r *http.Request, field string) ([]byte, string, error) {
 
 // saveTripImage stores an uploaded image (form field `field`) next to the bank slips, so backups
 // include it; ” when the field wasn't sent.
-func (a *API) saveTripImage(r *http.Request, field string) (string, error) {
+func (a *Service) saveTripImage(r *http.Request, field string) (string, error) {
 	data, ext, err := readTripImage(r, field)
 	if data == nil || err != nil {
 		return "", err
@@ -865,18 +900,18 @@ func (a *API) saveTripImage(r *http.Request, field string) (string, error) {
 		return "", err
 	}
 	name := "trip-" + hex.EncodeToString(rnd) + ext
-	if err := os.WriteFile(filepath.Join(a.slipsDir, name), data, 0o644); err != nil {
+	if err := os.WriteFile(a.images.Path(name), data, 0o644); err != nil {
 		return "", err
 	}
 	return name, nil
 }
 
-func (a *API) createTripPayment(w http.ResponseWriter, r *http.Request) {
+func (a *Service) createTripPayment(w http.ResponseWriter, r *http.Request) {
 	tripID, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	if owns, err := a.ownsTrip(r.Context(), userID(r), tripID); err != nil || !owns {
+	if owns, err := a.ownsTrip(r.Context(), auth.UserID(r), tripID); err != nil || !owns {
 		if err != nil {
 			httpx.ServerError(w, err)
 		} else {
@@ -918,7 +953,7 @@ func (a *API) createTripPayment(w http.ResponseWriter, r *http.Request) {
 	if _, err := a.db.ExecContext(r.Context(), `
 		INSERT INTO trip_payments (trip_id, from_member, to_member, amount_satang, paid_on, note, slip_file) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		tripID, from, to, money.ToSatang(amount), date, note, slip); err != nil {
-		a.removeSlipFile(slip)
+		a.images.Remove(slip)
 		httpx.ServerError(w, err)
 		return
 	}
@@ -926,12 +961,12 @@ func (a *API) createTripPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 // updateTripPayment confirms receipt and/or edits a payment; only the fields sent change.
-func (a *API) updateTripPayment(w http.ResponseWriter, r *http.Request) {
+func (a *Service) updateTripPayment(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	tripID, err := a.tripOf(r.Context(), userID(r), "trip_payments", id)
+	tripID, err := a.tripOf(r.Context(), auth.UserID(r), "trip_payments", id)
 	if err != nil || tripID == 0 {
 		if err != nil {
 			httpx.ServerError(w, err)
@@ -987,12 +1022,12 @@ func (a *API) updateTripPayment(w http.ResponseWriter, r *http.Request) {
 	a.respondTrip(w, r, tripID, http.StatusOK)
 }
 
-func (a *API) deleteTripPayment(w http.ResponseWriter, r *http.Request) {
+func (a *Service) deleteTripPayment(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	tripID, err := a.tripOf(r.Context(), userID(r), "trip_payments", id)
+	tripID, err := a.tripOf(r.Context(), auth.UserID(r), "trip_payments", id)
 	if err != nil || tripID == 0 {
 		if err != nil {
 			httpx.ServerError(w, err)
@@ -1011,12 +1046,13 @@ func (a *API) deleteTripPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, f := range files {
-		a.removeSlipFile(f)
+		a.images.Remove(f)
 	}
 	a.respondTrip(w, r, tripID, http.StatusOK)
 }
 
-// tripImage is a kind of trip picture: a payment's slip or a bill's photo.
+// tripImage is a kind of trip picture: a payment's slip or a bill's photo. sig is its own link
+// signature space (images.Store.Link), so a bank-slip link can't open a payment slip or bill.
 type tripImage struct {
 	table, column, path, sig string
 }
@@ -1026,7 +1062,7 @@ var (
 	billImage   = tripImage{"trip_bills", "image_file", "/api/trip-bills/%d/image", "tripbill"}
 )
 
-func (a *API) tripFiles(ctx context.Context, k tripImage, where string, arg int64) ([]string, error) {
+func (a *Service) tripFiles(ctx context.Context, k tripImage, where string, arg int64) ([]string, error) {
 	rows, err := a.db.QueryContext(ctx, `SELECT `+k.column+` FROM `+k.table+` WHERE `+k.column+` <> '' AND `+where, arg)
 	if err != nil {
 		return nil, err
@@ -1043,39 +1079,24 @@ func (a *API) tripFiles(ctx context.Context, k tripImage, where string, arg int6
 	return out, rows.Err()
 }
 
-// tripImageURL is a signed, short-lived link to a trip picture (like slipImageURL, but each kind
-// has its own signature space so a bank-slip link can't open a payment slip or bill with the same id).
-func (a *API) tripImageURL(k tripImage, id int64) string {
-	exp := time.Now().Truncate(time.Hour).Add(2 * time.Hour).Unix()
-	return fmt.Sprintf(k.path+"?exp=%d&sig=%s", id, exp, a.signTripImage(k, id, exp))
-}
-
-func (a *API) signTripImage(k tripImage, id, exp int64) string {
-	m := hmac.New(sha256.New, a.imageKey)
-	fmt.Fprintf(m, "%s.%d.%d", k.sig, id, exp)
-	return hex.EncodeToString(m.Sum(nil))
-}
-
-func (a *API) tripSlipImage(w http.ResponseWriter, r *http.Request) {
+func (a *Service) tripSlipImage(w http.ResponseWriter, r *http.Request) {
 	a.serveTripImage(w, r, paymentSlip)
 }
-func (a *API) tripBillImage(w http.ResponseWriter, r *http.Request) {
+func (a *Service) tripBillImage(w http.ResponseWriter, r *http.Request) {
 	a.serveTripImage(w, r, billImage)
 }
 
-func (a *API) serveTripImage(w http.ResponseWriter, r *http.Request, k tripImage) {
+func (a *Service) serveTripImage(w http.ResponseWriter, r *http.Request, k tripImage) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	exp, err := strconv.ParseInt(r.URL.Query().Get("exp"), 10, 64)
-	if err != nil || time.Now().Unix() > exp ||
-		!hmac.Equal([]byte(r.URL.Query().Get("sig")), []byte(a.signTripImage(k, id, exp))) {
+	if !a.images.Valid(r, k.sig, id) {
 		httpx.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "ลิงก์รูปหมดอายุ กรุณาเปิดหน้าใหม่"})
 		return
 	}
 	var file string
-	err = a.db.QueryRowContext(r.Context(), `SELECT `+k.column+` FROM `+k.table+` WHERE id = ?`, id).Scan(&file)
+	err := a.db.QueryRowContext(r.Context(), `SELECT `+k.column+` FROM `+k.table+` WHERE id = ?`, id).Scan(&file)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && file == "") {
 		httpx.NotFound(w)
 		return
@@ -1085,25 +1106,25 @@ func (a *API) serveTripImage(w http.ResponseWriter, r *http.Request, k tripImage
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	http.ServeFile(w, r, filepath.Join(a.slipsDir, filepath.Base(file)))
+	http.ServeFile(w, r, a.images.Path(file))
 }
 
 // PUT (multipart, field "image") replaces a bill's photo; DELETE removes it.
-func (a *API) setTripBillImage(w http.ResponseWriter, r *http.Request) {
+func (a *Service) setTripBillImage(w http.ResponseWriter, r *http.Request) {
 	a.setTripImage(w, r, billImage, "image")
 }
 
 // PUT (multipart, field "slip") adds or replaces a payment's slip; DELETE removes it.
-func (a *API) setTripPaymentSlip(w http.ResponseWriter, r *http.Request) {
+func (a *Service) setTripPaymentSlip(w http.ResponseWriter, r *http.Request) {
 	a.setTripImage(w, r, paymentSlip, "slip")
 }
 
-func (a *API) setTripImage(w http.ResponseWriter, r *http.Request, k tripImage, field string) {
+func (a *Service) setTripImage(w http.ResponseWriter, r *http.Request, k tripImage, field string) {
 	id, ok := httpx.PathID(w, r)
 	if !ok {
 		return
 	}
-	tripID, err := a.tripOf(r.Context(), userID(r), k.table, id)
+	tripID, err := a.tripOf(r.Context(), auth.UserID(r), k.table, id)
 	if err != nil || tripID == 0 {
 		if err != nil {
 			httpx.ServerError(w, err)
@@ -1130,17 +1151,17 @@ func (a *API) setTripImage(w http.ResponseWriter, r *http.Request, k tripImage, 
 	}
 	old, err := a.tripFiles(r.Context(), k, `id = ?`, id)
 	if err != nil {
-		a.removeSlipFile(file)
+		a.images.Remove(file)
 		httpx.ServerError(w, err)
 		return
 	}
 	if _, err := a.db.ExecContext(r.Context(), `UPDATE `+k.table+` SET `+k.column+` = ? WHERE id = ?`, file, id); err != nil {
-		a.removeSlipFile(file)
+		a.images.Remove(file)
 		httpx.ServerError(w, err)
 		return
 	}
 	for _, f := range old {
-		a.removeSlipFile(f)
+		a.images.Remove(f)
 	}
 	a.respondTrip(w, r, tripID, http.StatusOK)
 }

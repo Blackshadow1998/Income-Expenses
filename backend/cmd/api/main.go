@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"income-expenses/internal/auth"
 	"income-expenses/internal/backup"
 	"income-expenses/internal/config"
 	"income-expenses/internal/database"
@@ -47,7 +48,7 @@ func main() {
 
 	// Admin command: /app/api reset-password <username>
 	if len(os.Args) == 3 && os.Args[1] == "reset-password" {
-		temp, err := server.ResetPassword(context.Background(), db, os.Args[2])
+		temp, err := auth.ResetPassword(context.Background(), db, os.Args[2])
 		if err != nil {
 			db.Close()
 			logger.Fatalf("reset-password: %v", err)

@@ -469,3 +469,8 @@ func Open(path string) (*sql.DB, error) {
 	}
 	return db, nil
 }
+
+// IsUniqueViolation reports whether err is SQLite refusing a duplicate in a UNIQUE column.
+func IsUniqueViolation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}

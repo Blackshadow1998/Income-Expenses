@@ -1,4 +1,4 @@
-package server
+package auth
 
 import (
 	"crypto/rand"
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"income-expenses/internal/database"
 	"income-expenses/internal/httpx"
 	"income-expenses/internal/logx"
 
@@ -38,7 +39,7 @@ func normalizeEmail(s string) string { return strings.ToLower(strings.TrimSpace(
 
 const forgotSent = "ถ้ามีบัญชีที่ใช้อีเมลนี้ เราส่งรหัส 6 หลักไปแล้ว ใช้ได้ภายใน 3 นาที (เช็กในจดหมายขยะด้วย)"
 
-func (a *API) forgotPassword(w http.ResponseWriter, r *http.Request) {
+func (a *Service) forgotPassword(w http.ResponseWriter, r *http.Request) {
 	if a.sendMail == nil {
 		httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "ยังไม่ได้ตั้งค่าการส่งอีเมล กรุณาติดต่อผู้ดูแล"})
 		return
@@ -123,7 +124,7 @@ func (a *API) forgotPassword(w http.ResponseWriter, r *http.Request) {
 	sent()
 }
 
-func (a *API) verifyForgot(w http.ResponseWriter, r *http.Request) {
+func (a *Service) verifyForgot(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email string `json:"email"`
 		Code  string `json:"code"`
@@ -217,7 +218,7 @@ func (a *API) verifyForgot(w http.ResponseWriter, r *http.Request) {
 }
 
 // setEmail changes the signed-in user's e-mail for password resets; it needs their password.
-func (a *API) setEmail(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) setEmail(w http.ResponseWriter, r *http.Request, s *session) {
 	if !a.extendUnlock(w, r, s) {
 		return
 	}
@@ -246,7 +247,7 @@ func (a *API) setEmail(w http.ResponseWriter, r *http.Request, s *session) {
 		return
 	}
 	_, err = a.db.ExecContext(r.Context(), `UPDATE users SET email = ? WHERE id = ?`, email, s.userID)
-	if isUniqueViolation(err) {
+	if database.IsUniqueViolation(err) {
 		httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "อีเมลนี้มีบัญชีอื่นใช้อยู่แล้ว"})
 		return
 	}

@@ -1,4 +1,4 @@
-package server
+package trip
 
 import (
 	"net/http"
@@ -11,7 +11,7 @@ import (
 
 // tripOCR reads an uploaded picture (multipart "image"; form value kind = "receipt" or "slip")
 // for the bill/payment form; nothing is stored (the picture itself is attached separately).
-func (a *API) tripOCR(w http.ResponseWriter, r *http.Request) {
+func (a *Service) tripOCR(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxTripSlipBytes+1<<20)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		httpx.BadRequest(w, "ส่งรูปแบบ multipart/form-data (ไม่เกิน 10MB)")

@@ -1,14 +1,17 @@
-// Package server is the HTTP API: sign-in, accounts, transactions, slips, transfers, budgets,
-// recurring items, debts and trip bill splitting. Every data route filters by the signed-in user.
+// Package server is the HTTP API. It wires sign-in (package auth) and trip bill splitting (package
+// trip) with the money ledger kept here: accounts, transactions, slips, transfers, budgets, recurring
+// items and debts. Every data route filters by the signed-in user (auth.UserID).
 package server
 
 import (
-	"context"
 	"crypto/rand"
 	"database/sql"
 	"net/http"
 
+	"income-expenses/internal/auth"
 	"income-expenses/internal/httpx"
+	"income-expenses/internal/images"
+	"income-expenses/internal/trip"
 	"income-expenses/internal/web"
 )
 
@@ -28,20 +31,24 @@ func New(o Options) (*API, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	return &API{db: o.DB, slipsDir: o.SlipsDir, imageKey: key, webDir: o.WebDir,
-		googleClientID: o.GoogleClientID, verifyGoogle: verifyGoogleToken, sendMail: o.SendMail}, nil
+	return newAPI(o.DB, images.New(o.SlipsDir, key), o.WebDir,
+		auth.New(auth.Options{DB: o.DB, GoogleClientID: o.GoogleClientID, SendMail: o.SendMail})), nil
+}
+
+func newAPI(db *sql.DB, img *images.Store, webDir string, au *auth.Service) *API {
+	return &API{db: db, images: img, webDir: webDir, auth: au, trips: trip.New(db, img)}
 }
 
 type API struct {
-	db       *sql.DB
-	slipsDir string // uploaded slip images
-	imageKey []byte // signs slip image links (see slipImageURL)
-	webDir   string // exported web app; "" = API only
-
-	googleClientID string // Google sign-in is off when empty
-	verifyGoogle   func(ctx context.Context, clientID, idToken string) (googleClaims, error)
-	sendMail       func(to, subject, body string) error // nil when SMTP is not configured
+	db     *sql.DB
+	images *images.Store // uploaded slip images and their signed links
+	webDir string        // exported web app; "" = API only
+	auth   *auth.Service
+	trips  *trip.Service
 }
+
+// userID is the signed-in user of a data route.
+func userID(r *http.Request) int64 { return auth.UserID(r) }
 
 // Handler is the whole HTTP API (plus the web app when WebDir is set).
 func (a *API) Handler() http.Handler {
@@ -49,27 +56,12 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.HandleFunc("POST /api/auth/signup", a.signup)
-	mux.HandleFunc("POST /api/auth/login", a.login)
-	mux.HandleFunc("GET /api/auth/me", a.withSession(a.me))
-	mux.HandleFunc("POST /api/auth/unlock", a.withSession(a.unlock))
-	mux.HandleFunc("POST /api/auth/pin", a.withSession(a.setPIN))
-	mux.HandleFunc("POST /api/auth/lock", a.withSession(a.lock))
-	mux.HandleFunc("POST /api/auth/logout", a.withSession(a.logout))
-	mux.HandleFunc("POST /api/auth/password", a.withSession(a.changePassword))
-	mux.HandleFunc("POST /api/auth/forgot", a.forgotPassword)
-	mux.HandleFunc("POST /api/auth/forgot/verify", a.verifyForgot)
-	mux.HandleFunc("PUT /api/auth/email", a.withSession(a.setEmail))
-	mux.HandleFunc("GET /api/auth/config", a.authConfig)
-	mux.HandleFunc("POST /api/auth/google", a.googleSignIn)
-	mux.HandleFunc("POST /api/auth/google/link", a.withSession(a.linkGoogle))
-	mux.HandleFunc("GET /api/slips/{id}/image", a.slipImage)            // signed link instead of a session
-	mux.HandleFunc("GET /api/trip-payments/{id}/slip", a.tripSlipImage) // likewise
-	mux.HandleFunc("GET /api/trip-bills/{id}/image", a.tripBillImage)   // likewise
+	a.auth.Register(mux)
+	mux.HandleFunc("GET /api/slips/{id}/image", a.slipImage) // signed link instead of a session
 
 	// Everything below needs a signed-in, PIN-unlocked session and only sees that user's data.
-	data := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, a.requireUnlocked(h)) }
-	data("POST /api/auth/ping", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	a.trips.Register(mux, a.auth.RequireUnlocked)
+	data := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, a.auth.RequireUnlocked(h)) }
 	data("GET /api/categories", a.listCategories)
 	data("GET /api/months", a.listMonths)
 	data("GET /api/years", a.listYears)
@@ -113,27 +105,6 @@ func (a *API) Handler() http.Handler {
 	data("GET /api/transfers/{id}", a.getTransfer)
 	data("PUT /api/transfers/{id}", a.updateTransfer)
 	data("DELETE /api/transfers/{id}", a.deleteTransfer)
-	data("GET /api/trips", a.listTrips)
-	data("POST /api/trips", a.createTrip)
-	data("GET /api/trips/{id}", a.getTrip)
-	data("PUT /api/trips/{id}", a.updateTrip)
-	data("DELETE /api/trips/{id}", a.deleteTrip)
-	data("POST /api/trips/{id}/members", a.addTripMember)
-	data("DELETE /api/trips/{id}/members/{member}", a.deleteTripMember)
-	data("GET /api/trips/{id}/bills", a.listTripBills)
-	data("POST /api/trips/{id}/bills", a.createTripBill)
-	data("PUT /api/bills/{id}", a.updateTripBill)
-	data("DELETE /api/bills/{id}", a.deleteTripBill)
-	data("PUT /api/bills/{id}/image", a.setTripBillImage)
-	data("DELETE /api/bills/{id}/image", a.setTripBillImage)
-	data("GET /api/trips/{id}/summary", a.tripSummary)
-	data("GET /api/trips/{id}/payments", a.listTripPayments)
-	data("POST /api/trips/{id}/payments", a.createTripPayment)
-	data("PATCH /api/payments/{id}", a.updateTripPayment)
-	data("DELETE /api/payments/{id}", a.deleteTripPayment)
-	data("PUT /api/payments/{id}/slip", a.setTripPaymentSlip)
-	data("POST /api/trip-ocr", a.tripOCR)
-	data("DELETE /api/payments/{id}/slip", a.setTripPaymentSlip)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { httpx.NotFound(w) })
 	if a.webDir != "" {

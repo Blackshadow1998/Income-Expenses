@@ -29,7 +29,7 @@ func TestOccurrenceDates(t *testing.T) {
 
 func TestRecurringCreatesTransactions(t *testing.T) {
 	c, db := newTestServer(t)
-	owner := c.signedIn("owner")
+	owner := c.SignedIn("owner")
 
 	// Catch-up: a rule last due in August creates Aug 31, Sep 30 and Oct 31 by Nov 7.
 	if _, err := db.Exec(`INSERT INTO recurring (user_id, day_of_month, category_id, account_id, amount_satang, note, next_date)
@@ -45,7 +45,7 @@ func TestRecurringCreatesTransactions(t *testing.T) {
 	if next != "2026-11-30" {
 		t.Fatalf("next_date = %s, want 2026-11-30", next)
 	}
-	_, oct := c.do("GET", "/api/transactions?month=2026-10", owner, nil)
+	_, oct := c.Do("GET", "/api/transactions?month=2026-10", owner, nil)
 	items := oct["items"].([]any)
 	if len(items) != 1 || items[0].(map[string]any)["recurring_id"].(float64) != 1 || items[0].(map[string]any)["date"] != "2026-10-31" {
 		t.Fatalf("October recurring transaction: %v", items)
@@ -53,34 +53,34 @@ func TestRecurringCreatesTransactions(t *testing.T) {
 
 	// Through the API a rule for today's day of month creates today's transaction at once.
 	today := time.Now()
-	status, out := c.do("POST", "/api/recurring", owner, map[string]any{
+	status, out := c.Do("POST", "/api/recurring", owner, map[string]any{
 		"day": today.Day(), "category_id": 1, "account_id": 1, "amount": 500, "note": "เงินปันผล",
 	})
 	if status != http.StatusCreated || out["created_transactions"].(float64) < 1 {
 		t.Fatalf("create rule: %d %v", status, out)
 	}
 	var rules []map[string]any
-	c.doInto("GET", "/api/recurring", owner, nil, &rules)
+	c.DoInto("GET", "/api/recurring", owner, nil, &rules)
 	if len(rules) != 2 || rules[0]["account_label"] == "" {
 		t.Fatalf("rules: %v", rules)
 	}
 
-	other := c.signedIn("other")
-	if status, _ := c.do("POST", "/api/recurring", other, map[string]any{"day": 1, "category_id": 2, "account_id": 1, "amount": 1}); status != http.StatusBadRequest {
+	other := c.SignedIn("other")
+	if status, _ := c.Do("POST", "/api/recurring", other, map[string]any{"day": 1, "category_id": 2, "account_id": 1, "amount": 1}); status != http.StatusBadRequest {
 		t.Fatalf("rule on someone else's account: %d", status)
 	}
-	if status, _ := c.do("DELETE", "/api/recurring/1", other, nil); status != http.StatusNotFound {
+	if status, _ := c.Do("DELETE", "/api/recurring/1", other, nil); status != http.StatusNotFound {
 		t.Fatalf("deleting someone else's rule: %d", status)
 	}
 
 	// Pausing then deleting keeps the transactions already created.
-	if status, _ := c.do("PUT", "/api/recurring/1", owner, map[string]any{"day": 31, "category_id": 2, "account_id": 1, "amount": 100, "active": false}); status != http.StatusOK {
+	if status, _ := c.Do("PUT", "/api/recurring/1", owner, map[string]any{"day": 31, "category_id": 2, "account_id": 1, "amount": 100, "active": false}); status != http.StatusOK {
 		t.Fatalf("pause rule: %d", status)
 	}
-	if status, _ := c.do("DELETE", "/api/recurring/1", owner, nil); status != http.StatusNoContent {
+	if status, _ := c.Do("DELETE", "/api/recurring/1", owner, nil); status != http.StatusNoContent {
 		t.Fatalf("delete rule: %d", status)
 	}
-	_, oct = c.do("GET", "/api/transactions?month=2026-10", owner, nil)
+	_, oct = c.Do("GET", "/api/transactions?month=2026-10", owner, nil)
 	if items := oct["items"].([]any); len(items) != 1 || items[0].(map[string]any)["recurring_id"] != nil {
 		t.Fatalf("transaction should stay, untagged: %v", items)
 	}

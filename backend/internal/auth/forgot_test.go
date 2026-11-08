@@ -1,4 +1,4 @@
-package server
+package auth
 
 import (
 	"net/http"
@@ -43,97 +43,97 @@ func (m *mailbox) lastCode(t *testing.T, to string, count int) string {
 
 func TestForgotPasswordByEmail(t *testing.T) {
 	box := &mailbox{}
-	c, db := newTestServer(t, func(a *API) { a.sendMail = box.send })
-	status, out := c.do("POST", "/api/auth/signup", "", map[string]string{
+	c, db := newTestServer(t, func(a *Service) { a.sendMail = box.send })
+	status, out := c.Do("POST", "/api/auth/signup", "", map[string]string{
 		"username": "forgetful", "password": "old-password", "email": " Me@Example.com ",
 	})
 	if status != http.StatusCreated || out["user"].(map[string]any)["email"] != "me@example.com" {
 		t.Fatalf("signup with email: %d %v", status, out)
 	}
 	oldToken := out["token"].(string)
-	c.do("POST", "/api/auth/pin", oldToken, map[string]string{"pin": "135790"})
+	c.Do("POST", "/api/auth/pin", oldToken, map[string]string{"pin": "135790"})
 
 	// Unknown and known addresses get the same answer; only the known one gets mail.
-	_, unknown := c.do("POST", "/api/auth/forgot", "", map[string]string{"email": "nobody@example.com"})
-	status, known := c.do("POST", "/api/auth/forgot", "", map[string]string{"email": "ME@example.com"})
+	_, unknown := c.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "nobody@example.com"})
+	status, known := c.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "ME@example.com"})
 	if status != http.StatusOK || unknown["message"] != known["message"] {
 		t.Fatalf("answers differ: %v vs %v", unknown, known)
 	}
 	code := box.lastCode(t, "me@example.com", 1)
 
 	// Asking again within a minute sends nothing new.
-	c.do("POST", "/api/auth/forgot", "", map[string]string{"email": "me@example.com"})
+	c.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "me@example.com"})
 	time.Sleep(100 * time.Millisecond)
 	if len(box.sent) != 1 {
 		t.Fatalf("resend within 60s should not mail, sent %d", len(box.sent))
 	}
 
-	if status, out := c.do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": "000000"}); status != http.StatusBadRequest || out["code"] != "invalid_code" {
+	if status, out := c.Do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": "000000"}); status != http.StatusBadRequest || out["code"] != "invalid_code" {
 		t.Fatalf("wrong code: %d %v", status, out)
 	}
-	status, res := c.do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": code})
+	status, res := c.Do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": code})
 	if status != http.StatusOK || res["username"] != "forgetful" || len(res["temp_password"].(string)) != 12 {
 		t.Fatalf("verify: %d %v", status, res)
 	}
 	temp := res["temp_password"].(string)
-	if status, _ := c.do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": code}); status != http.StatusBadRequest {
+	if status, _ := c.Do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": code}); status != http.StatusBadRequest {
 		t.Fatalf("a code works only once, got %d", status)
 	}
 
 	// Signing in with the temporary password only allows changing the password.
-	status, out = c.do("POST", "/api/auth/login", "", map[string]string{"username": "forgetful", "password": temp})
+	status, out = c.Do("POST", "/api/auth/login", "", map[string]string{"username": "forgetful", "password": temp})
 	if status != http.StatusOK || out["must_change_password"] != true {
 		t.Fatalf("temp login: %d %v", status, out)
 	}
 	tok := out["token"].(string)
-	if status, out := c.do("GET", "/api/accounts", tok, nil); status != http.StatusForbidden || out["code"] != "password_change_required" {
+	if status, out := c.Do("GET", "/api/private", tok, nil); status != http.StatusForbidden || out["code"] != "password_change_required" {
 		t.Fatalf("data with temp session: %d %v", status, out)
 	}
-	if status, _ := c.do("POST", "/api/auth/password", tok, map[string]string{"current_password": temp, "new_password": "brand-new-pass"}); status != http.StatusNoContent {
+	if status, _ := c.Do("POST", "/api/auth/password", tok, map[string]string{"current_password": temp, "new_password": "brand-new-pass"}); status != http.StatusNoContent {
 		t.Fatalf("change from temp: %d", status)
 	}
-	if status, _ := c.do("GET", "/api/accounts", tok, nil); status != http.StatusOK {
+	if status, _ := c.Do("GET", "/api/private", tok, nil); status != http.StatusOK {
 		t.Fatalf("after change: %d", status)
 	}
-	if status, _ := c.do("POST", "/api/auth/login", "", map[string]string{"username": "forgetful", "password": temp}); status != http.StatusUnauthorized {
+	if status, _ := c.Do("POST", "/api/auth/login", "", map[string]string{"username": "forgetful", "password": temp}); status != http.StatusUnauthorized {
 		t.Fatalf("temp password must stop working after the change: %d", status)
 	}
 
 	// An expired temporary password doesn't work.
 	db.Exec(`UPDATE password_resets SET created_at = created_at - 3600`)
-	c.do("POST", "/api/auth/forgot", "", map[string]string{"email": "me@example.com"})
+	c.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "me@example.com"})
 	code = box.lastCode(t, "me@example.com", 2)
-	_, res = c.do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": code})
+	_, res = c.Do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "me@example.com", "code": code})
 	db.Exec(`UPDATE identities SET temp_expires = 1`)
-	if status, _ := c.do("POST", "/api/auth/login", "", map[string]string{"username": "forgetful", "password": res["temp_password"].(string)}); status != http.StatusUnauthorized {
+	if status, _ := c.Do("POST", "/api/auth/login", "", map[string]string{"username": "forgetful", "password": res["temp_password"].(string)}); status != http.StatusUnauthorized {
 		t.Fatalf("expired temp password: %d", status)
 	}
 }
 
 func TestForgotCodeExpiresAndLimitsTries(t *testing.T) {
 	box := &mailbox{}
-	c, db := newTestServer(t, func(a *API) { a.sendMail = box.send })
-	c.do("POST", "/api/auth/signup", "", map[string]string{"username": "someone", "password": "some-password", "email": "s@example.com"})
+	c, db := newTestServer(t, func(a *Service) { a.sendMail = box.send })
+	c.Do("POST", "/api/auth/signup", "", map[string]string{"username": "someone", "password": "some-password", "email": "s@example.com"})
 
-	c.do("POST", "/api/auth/forgot", "", map[string]string{"email": "s@example.com"})
+	c.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "s@example.com"})
 	code := box.lastCode(t, "s@example.com", 1)
 	for i := 0; i < otpMaxTries; i++ {
-		c.do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "s@example.com", "code": "999999"})
+		c.Do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "s@example.com", "code": "999999"})
 	}
-	if status, _ := c.do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "s@example.com", "code": code}); status != http.StatusBadRequest {
+	if status, _ := c.Do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "s@example.com", "code": code}); status != http.StatusBadRequest {
 		t.Fatalf("code must be dead after %d wrong tries, got %d", otpMaxTries, status)
 	}
 
 	db.Exec(`UPDATE password_resets SET created_at = created_at - 120`)
-	c.do("POST", "/api/auth/forgot", "", map[string]string{"email": "s@example.com"})
+	c.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "s@example.com"})
 	code = box.lastCode(t, "s@example.com", 2)
 	db.Exec(`UPDATE password_resets SET expires_at = 1`) // 3 minutes are up
-	if status, _ := c.do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "s@example.com", "code": code}); status != http.StatusBadRequest {
+	if status, _ := c.Do("POST", "/api/auth/forgot/verify", "", map[string]string{"email": "s@example.com", "code": code}); status != http.StatusBadRequest {
 		t.Fatalf("expired code accepted: %d", status)
 	}
 
 	off, _ := newTestServer(t)
-	if status, _ := off.do("POST", "/api/auth/forgot", "", map[string]string{"email": "s@example.com"}); status != http.StatusServiceUnavailable {
+	if status, _ := off.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "s@example.com"}); status != http.StatusServiceUnavailable {
 		t.Fatalf("no SMTP configured: %d", status)
 	}
 }

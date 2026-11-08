@@ -10,10 +10,15 @@ See README.md for features, API table and run commands.
   - `internal/` leaf packages (import no app package, or only `logx`/`money`): `config` (env) · `database` (schema/seed/migrations)
     · `httpx` (JSON helpers, `PathID`, CORS, request log) · `money` (satang) · `ocr` (Tesseract + slip/receipt parsers)
     · `split` (trip maths) · `mail` · `backup` · `web` (serves the exported app) · `logx` (logger)
-  - `internal/server` — all HTTP handlers + routes (`server.go`); the only package that imports the others besides `cmd`.
-    `handlers.go` transactions/months/yearly/payees · `accounts.go` · `slips.go` · `auth.go` users, sessions, PIN, signed links
-    (+ `auth_test.go`: migration from the pre-auth DB, per-user isolation, PIN flow; `newTestServer` for all server tests)
-  - Keep the direction: leaves never import `server`; new pure logic goes in a leaf package with its own tests.
+    · `images` (slips folder: `Path`/`Remove`, signed links `Link`/`Valid`, one signature kind per picture type)
+  - Domain packages (handlers + `Register(mux)`): `internal/auth` users, sessions, PIN, passwords, forgot, Google —
+    exports `RequireUnlocked`, `UserID(r)`, `ResetPassword` · `internal/trip` trip bill splitting (`Register(mux, guard)`)
+  - `internal/server` — wires auth + trip (`server.go`) and holds the ledger, which is too coupled to split:
+    `handlers.go` transactions/months/yearly/payees · `accounts.go` · `slips.go` · `transfers.go` · budgets/recurring/debts/…
+    (`server_test.go`: migration from the pre-auth DB, per-user isolation; its `newTestServer` runs the whole API)
+  - `internal/apitest` — shared test client (`Do`, `DoInto`, `SignedIn`) and `OpenDB`; each package's tests build their own mux.
+  - Keep the direction: leaves never import domain packages; `auth`/`trip` never import `server` or each other except
+    `trip` → `auth.UserID`. New pure logic goes in a leaf package with its own tests.
 - `frontend/` — Expo SDK 58 + Expo Router (`src/app/`), React Native, TypeScript, runs on web/Android/iOS.
   - `(tabs)/index.tsx` monthly · `(tabs)/yearly.tsx` chart · `(tabs)/accounts.tsx` · `transaction.tsx` add/edit/confirm-slip form · `account.tsx` account form
   - `(tabs)/settings.tsx` lock / change PIN / sign out · `change-pin.tsx`
@@ -50,25 +55,25 @@ cd frontend && npx expo start --web --port 8081                                #
 - Bank slips: OCR is **local Tesseract** (owner's choice — do not send slips to external services). A slip is stored in `slips` as `pending` (not in any balance) and becomes a transaction only when confirmed (`POST /api/transactions` with `slip_id`), or a transfer (`POST /api/transfers` with `slip_id` → `slips.transfer_id`). Deleting that transaction/transfer deletes the slip + image.
 - OCR runs twice (original + ImageMagick 2x); `slips.ocr_text` holds both, split by `ocr.UpscaledMark`. Always parse
   stored text with `ocr.ParseSlipText` (merges field by field), never `parseSlip` directly.
-- Trip bill splitting (`internal/server/trips.go`, screens `(tabs)/trips.tsx`, `trip.tsx`, `trip-bill.tsx`, `trip-payment.tsx`): members are
+- Trip bill splitting (`internal/trip/trip.go`, screens `(tabs)/trips.tsx`, `trip.tsx`, `trip-bill.tsx`, `trip-payment.tsx`): members are
   names, not users; all maths is in package `internal/split` (int64 satang, leftover satang to the payer if sharing else
   the first listed; pairwise netting and greedy "minimal" transfers). Balances are never stored — always computed from
   `trip_bills`/`trip_bill_parts` minus `trip_payments`. Payment slips and bill photos (`trip_bills.image_file`) live in
-  the slips dir as `trip-*` files (backed up); each kind has its own link signature (`tripImage` in trips.go).
-  `trip_ocr.go` (parser: `internal/ocr/receipt.go`) reads a receipt (items + total) or slip for the form only — it never stores or auto-saves anything.
+  the slips dir as `trip-*` files (backed up); each kind has its own link signature (`tripImage` in trip.go).
+  `trip/ocr.go` (parser: `internal/ocr/receipt.go`) reads a receipt (items + total) or slip for the form only — it never stores or auto-saves anything.
   `frontend/src/tripSplit.ts` mirrors the share rule for the form preview (`npm test` runs its tests with Node).
 - The "รายรับรายจ่าย" tab is `index` (month) + hidden `yearly` route, switched by `PeriodSwitch`; the tab bar takes
   glyphs + aliases (`makeSpotlightTabBar`).
 - Slip rules (`slip_rules.go`, screen `slip-rules.tsx`): per-user, checked in `sort_order`, first match → `slip.suggestion` that only **prefills** the confirm form; never auto-confirm. `self` = sender and receiver are the same person (`samePerson`).
 - Deleting an account with transactions is refused (409).
-- Multi-user: `accounts`, `transactions`, `slips`, `transfers`, `subcategories` carry `user_id`; **every query must filter by `userID(r)`**.
+- Multi-user: `accounts`, `transactions`, `slips`, `transfers`, `subcategories` carry `user_id`; **every query must filter by `userID(r)`** (= `auth.UserID(r)`).
   Categories, banks and account types are shared. New users get `starterSubcategories`.
 - Table rebuilds: build `<table>_new`, copy, drop old, rename new (never rename the old table — SQLite repoints
   other tables' REFERENCES at it). See `upgradeSubcategories`.
   Data routes go through `requireUnlocked` (session + PIN unlocked within 5 min). The first user to sign up takes over rows with `user_id NULL`.
 - Sign-in methods live in `identities` (`provider`, `subject`) so Google sign-in can be added later without touching `users`.
 - Slip images are served via signed short-lived links (`image_url`), not the session token.
-- Forgot password (`forgot.go`, `mail.go`): e-mail OTP (3 min, single use, 5 tries, 60 s resend, 5/hour) →
+- Forgot password (`auth/forgot.go`, `mail.go`): e-mail OTP (3 min, single use, 5 tries, 60 s resend, 5/hour) →
   temporary password (24 h) → that session is `must_change_password` until a new one is set. Answers never
   reveal whether an e-mail has an account. SMTP comes from `.env`; tests use `mailbox` (forgot_test.go).
 - Never commit real slip text, names, account numbers or refs as test fixtures — anonymise them.

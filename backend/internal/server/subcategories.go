@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"income-expenses/internal/database"
 	"income-expenses/internal/httpx"
 )
 
@@ -23,10 +24,6 @@ func decodeName(w http.ResponseWriter, r *http.Request, in any, name *string) bo
 	return true
 }
 
-func isUniqueViolation(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
-}
-
 func (a *API) createSubcategory(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		CategoryID int64  `json:"category_id"`
@@ -40,7 +37,7 @@ func (a *API) createSubcategory(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO subcategories (user_id, category_id, name, sort_order)
 		SELECT ?1, c.id, ?3, COALESCE((SELECT MAX(sort_order) FROM subcategories WHERE user_id = ?1 AND category_id = c.id), 0) + 1
 		FROM categories c WHERE c.id = ?2`, uid, in.CategoryID, in.Name)
-	if isUniqueViolation(err) {
+	if database.IsUniqueViolation(err) {
 		httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "มีรายการชื่อนี้ในหมวดนี้แล้ว"})
 		return
 	}
@@ -69,7 +66,7 @@ func (a *API) renameSubcategory(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := a.db.ExecContext(r.Context(),
 		`UPDATE subcategories SET name = ? WHERE id = ? AND user_id = ?`, in.Name, id, userID(r))
-	if isUniqueViolation(err) {
+	if database.IsUniqueViolation(err) {
 		httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "มีรายการชื่อนี้ในหมวดนี้แล้ว"})
 		return
 	}

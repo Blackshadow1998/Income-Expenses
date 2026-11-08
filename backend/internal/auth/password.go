@@ -1,4 +1,4 @@
-package server
+package auth
 
 import (
 	"context"
@@ -73,7 +73,7 @@ func randomPassword(n int) (string, error) {
 
 // changePassword lets a signed-in, unlocked user replace their password (e.g. the temporary one).
 // Their other sessions are signed out.
-func (a *API) changePassword(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) changePassword(w http.ResponseWriter, r *http.Request, s *session) {
 	var in struct {
 		Current string `json:"current_password"`
 		New     string `json:"new_password"`

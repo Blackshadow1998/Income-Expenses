@@ -1,8 +1,9 @@
-package server
+// Package auth is signing in: users, sessions, the PIN lock, passwords (and forgetting them) and
+// Google sign-in. RequireUnlocked guards every money route; UserID tells the handler whose data it is.
+package auth
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -41,6 +42,45 @@ var (
 	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("not-a-real-password"), bcrypt.DefaultCost)
 )
 
+// Options are what sign-in needs from outside.
+type Options struct {
+	DB             *sql.DB
+	GoogleClientID string                               // Google sign-in is off when empty
+	SendMail       func(to, subject, body string) error // nil when e-mail is not configured
+}
+
+type Service struct {
+	db             *sql.DB
+	googleClientID string
+	verifyGoogle   func(ctx context.Context, clientID, idToken string) (googleClaims, error)
+	sendMail       func(to, subject, body string) error
+}
+
+func New(o Options) *Service {
+	return &Service{db: o.DB, googleClientID: o.GoogleClientID, verifyGoogle: verifyGoogleToken, sendMail: o.SendMail}
+}
+
+// Register adds the /api/auth routes.
+func (a *Service) Register(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/auth/signup", a.signup)
+	mux.HandleFunc("POST /api/auth/login", a.login)
+	mux.HandleFunc("GET /api/auth/me", a.withSession(a.me))
+	mux.HandleFunc("POST /api/auth/unlock", a.withSession(a.unlock))
+	mux.HandleFunc("POST /api/auth/pin", a.withSession(a.setPIN))
+	mux.HandleFunc("POST /api/auth/lock", a.withSession(a.lock))
+	mux.HandleFunc("POST /api/auth/logout", a.withSession(a.logout))
+	mux.HandleFunc("POST /api/auth/password", a.withSession(a.changePassword))
+	mux.HandleFunc("POST /api/auth/forgot", a.forgotPassword)
+	mux.HandleFunc("POST /api/auth/forgot/verify", a.verifyForgot)
+	mux.HandleFunc("PUT /api/auth/email", a.withSession(a.setEmail))
+	mux.HandleFunc("GET /api/auth/config", a.authConfig)
+	mux.HandleFunc("POST /api/auth/google", a.googleSignIn)
+	mux.HandleFunc("POST /api/auth/google/link", a.withSession(a.linkGoogle))
+	mux.HandleFunc("POST /api/auth/ping", a.RequireUnlocked(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+}
+
 type User struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
@@ -63,8 +103,8 @@ type sessionHandler func(http.ResponseWriter, *http.Request, *session)
 
 type ctxKey struct{}
 
-// userID is the signed-in user of a request that went through requireUnlocked.
-func userID(r *http.Request) int64 {
+// UserID is the signed-in user of a request that went through RequireUnlocked.
+func UserID(r *http.Request) int64 {
 	id, _ := r.Context().Value(ctxKey{}).(int64)
 	return id
 }
@@ -81,7 +121,7 @@ func hashToken(token string) string {
 }
 
 // loadSession returns the session of the request's bearer token, or nil when there is none or it expired.
-func (a *API) loadSession(r *http.Request) (*session, error) {
+func (a *Service) loadSession(r *http.Request) (*session, error) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || token == "" {
 		return nil, nil
@@ -100,7 +140,7 @@ func (a *API) loadSession(r *http.Request) (*session, error) {
 }
 
 // withSession lets a request through with any valid session, locked or not.
-func (a *API) withSession(h sessionHandler) http.HandlerFunc {
+func (a *Service) withSession(h sessionHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s, err := a.loadSession(r)
 		if err != nil {
@@ -115,8 +155,8 @@ func (a *API) withSession(h sessionHandler) http.HandlerFunc {
 	}
 }
 
-// requireUnlocked guards the money data: a valid session unlocked with the PIN within unlockTTL.
-func (a *API) requireUnlocked(h http.HandlerFunc) http.HandlerFunc {
+// RequireUnlocked guards the money data: a valid session unlocked with the PIN within unlockTTL.
+func (a *Service) RequireUnlocked(h http.HandlerFunc) http.HandlerFunc {
 	return a.withSession(func(w http.ResponseWriter, r *http.Request, s *session) {
 		if s.mustChange {
 			authError(w, http.StatusForbidden, "password_change_required", "กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน")
@@ -134,7 +174,7 @@ func (a *API) requireUnlocked(h http.HandlerFunc) http.HandlerFunc {
 }
 
 // extendUnlock refuses a locked session; otherwise each use pushes both the idle lock and the session expiry forward.
-func (a *API) extendUnlock(w http.ResponseWriter, r *http.Request, s *session) bool {
+func (a *Service) extendUnlock(w http.ResponseWriter, r *http.Request, s *session) bool {
 	now := time.Now()
 	if now.Unix() >= s.unlockedUntil {
 		authError(w, http.StatusUnauthorized, "locked", "กรุณาใส่ PIN")
@@ -147,7 +187,7 @@ func (a *API) extendUnlock(w http.ResponseWriter, r *http.Request, s *session) b
 	return true
 }
 
-func (a *API) markUnlocked(ctx context.Context, s *session, now time.Time) error {
+func (a *Service) markUnlocked(ctx context.Context, s *session, now time.Time) error {
 	_, err := a.db.ExecContext(ctx,
 		`UPDATE sessions SET unlocked_until = ?, expires_at = ? WHERE token_hash = ?`,
 		now.Add(unlockTTL).Unix(), now.Add(sessionTTL).Unix(), s.tokenHash)
@@ -173,7 +213,7 @@ func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, boo
 	return in, true
 }
 
-func (a *API) signup(w http.ResponseWriter, r *http.Request) {
+func (a *Service) signup(w http.ResponseWriter, r *http.Request) {
 	in, ok := decodeCredentials(w, r)
 	if !ok {
 		return
@@ -232,7 +272,7 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = tx.ExecContext(r.Context(), `UPDATE users SET email = ? WHERE id = ?`, in.Email, uid)
-	if isUniqueViolation(err) {
+	if database.IsUniqueViolation(err) {
 		httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "อีเมลนี้มีบัญชีอื่นใช้อยู่แล้ว"})
 		return
 	}
@@ -278,7 +318,7 @@ func newUser(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 	return uid, nil
 }
 
-func (a *API) login(w http.ResponseWriter, r *http.Request) {
+func (a *Service) login(w http.ResponseWriter, r *http.Request) {
 	in, ok := decodeCredentials(w, r)
 	if !ok {
 		return
@@ -338,7 +378,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 
 // startSession issues a new bearer token (only its hash is stored) that starts out unlocked.
 // mustChange limits it to changing the password (signed in with a temporary password).
-func (a *API) startSession(w http.ResponseWriter, r *http.Request, uid int64, status int, mustChange bool) {
+func (a *Service) startSession(w http.ResponseWriter, r *http.Request, uid int64, status int, mustChange bool) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		httpx.ServerError(w, err)
@@ -364,7 +404,7 @@ func (a *API) startSession(w http.ResponseWriter, r *http.Request, uid int64, st
 	httpx.WriteJSON(w, status, map[string]any{"token": token, "user": u, "must_change_password": mustChange})
 }
 
-func (a *API) fetchUser(ctx context.Context, id int64) (User, error) {
+func (a *Service) fetchUser(ctx context.Context, id int64) (User, error) {
 	var u User
 	err := a.db.QueryRowContext(ctx, `
 		SELECT u.id, u.name, COALESCE(i.subject, ''), u.email, u.pin_hash <> ''
@@ -373,7 +413,7 @@ func (a *API) fetchUser(ctx context.Context, id int64) (User, error) {
 	return u, err
 }
 
-func (a *API) me(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) me(w http.ResponseWriter, r *http.Request, s *session) {
 	u, err := a.fetchUser(r.Context(), s.userID)
 	if err != nil {
 		httpx.ServerError(w, err)
@@ -391,7 +431,7 @@ type pinInput struct {
 	CurrentPIN string `json:"current_pin"` // when changing an existing PIN
 }
 
-func (a *API) unlock(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) unlock(w http.ResponseWriter, r *http.Request, s *session) {
 	var in pinInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpx.BadRequest(w, "invalid JSON body")
@@ -413,7 +453,7 @@ func (a *API) unlock(w http.ResponseWriter, r *http.Request, s *session) {
 
 // checkPIN compares pin with the user's PIN. Wrong PINs count against the session; after
 // maxPINTries in a row it is signed out, so guessing needs the password again.
-func (a *API) checkPIN(w http.ResponseWriter, r *http.Request, s *session, pin string) bool {
+func (a *Service) checkPIN(w http.ResponseWriter, r *http.Request, s *session, pin string) bool {
 	if bcrypt.CompareHashAndPassword([]byte(s.pinHash), []byte(pin)) == nil {
 		if s.pinFailures > 0 {
 			if _, err := a.db.ExecContext(r.Context(), `UPDATE sessions SET pin_failures = 0 WHERE token_hash = ?`, s.tokenHash); err != nil {
@@ -448,7 +488,7 @@ func (a *API) checkPIN(w http.ResponseWriter, r *http.Request, s *session, pin s
 
 // setPIN sets the first PIN (right after sign-up/sign-in) or changes it. Changing needs the current
 // PIN, except within unlockTTL of signing in with the password, which is how a forgotten PIN is reset.
-func (a *API) setPIN(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) setPIN(w http.ResponseWriter, r *http.Request, s *session) {
 	var in pinInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpx.BadRequest(w, "invalid JSON body")
@@ -498,7 +538,7 @@ func weakPIN(p string) bool {
 	return same || up || down
 }
 
-func (a *API) lock(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) lock(w http.ResponseWriter, r *http.Request, s *session) {
 	if _, err := a.db.ExecContext(r.Context(), `UPDATE sessions SET unlocked_until = 0 WHERE token_hash = ?`, s.tokenHash); err != nil {
 		httpx.ServerError(w, err)
 		return
@@ -506,31 +546,10 @@ func (a *API) lock(w http.ResponseWriter, r *http.Request, s *session) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) logout(w http.ResponseWriter, r *http.Request, s *session) {
+func (a *Service) logout(w http.ResponseWriter, r *http.Request, s *session) {
 	if _, err := a.db.ExecContext(r.Context(), `DELETE FROM sessions WHERE token_hash = ?`, s.tokenHash); err != nil {
 		httpx.ServerError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// slipImageURL is a signed, short-lived link to a slip image: <Image>/<img> tags can't send the
-// Authorization header. The expiry is rounded to the hour so the URL (and browser cache) stays stable.
-func (a *API) slipImageURL(id int64) string {
-	exp := time.Now().Truncate(time.Hour).Add(2 * time.Hour).Unix()
-	return fmt.Sprintf("/api/slips/%d/image?exp=%d&sig=%s", id, exp, a.signImage(id, exp))
-}
-
-func (a *API) signImage(id, exp int64) string {
-	m := hmac.New(sha256.New, a.imageKey)
-	fmt.Fprintf(m, "%d.%d", id, exp)
-	return hex.EncodeToString(m.Sum(nil))
-}
-
-func (a *API) validImageSig(r *http.Request, id int64) bool {
-	exp, err := strconv.ParseInt(r.URL.Query().Get("exp"), 10, 64)
-	if err != nil || time.Now().Unix() > exp {
-		return false
-	}
-	return hmac.Equal([]byte(r.URL.Query().Get("sig")), []byte(a.signImage(id, exp)))
 }

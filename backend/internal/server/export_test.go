@@ -10,13 +10,13 @@ import (
 
 func TestExportCSV(t *testing.T) {
 	c, _ := newTestServer(t)
-	owner := c.signedIn("owner") // old data: 50 baht expense on 2026-11-01 (no account)
-	c.do("POST", "/api/transactions", owner, map[string]any{"date": "2026-11-02", "category_id": 1, "account_id": 1, "amount": 1234.5, "note": "เงินเดือน, พ.ย."})
-	_, acc := c.do("POST", "/api/accounts", owner, map[string]any{"bank_id": 3, "type_id": 1, "opening_balance": 0})
-	c.do("POST", "/api/transfers", owner, map[string]any{"date": "2026-11-03", "from_account_id": 1, "to_account_id": acc["id"], "amount": 100})
-	c.do("POST", "/api/transactions", owner, map[string]any{"date": "2026-12-01", "category_id": 2, "account_id": 1, "amount": 9})
+	owner := c.SignedIn("owner") // old data: 50 baht expense on 2026-11-01 (no account)
+	c.Do("POST", "/api/transactions", owner, map[string]any{"date": "2026-11-02", "category_id": 1, "account_id": 1, "amount": 1234.5, "note": "เงินเดือน, พ.ย."})
+	_, acc := c.Do("POST", "/api/accounts", owner, map[string]any{"bank_id": 3, "type_id": 1, "opening_balance": 0})
+	c.Do("POST", "/api/transfers", owner, map[string]any{"date": "2026-11-03", "from_account_id": 1, "to_account_id": acc["id"], "amount": 100})
+	c.Do("POST", "/api/transactions", owner, map[string]any{"date": "2026-12-01", "category_id": 2, "account_id": 1, "amount": 9})
 
-	req, _ := http.NewRequest("GET", c.srv.URL+"/api/export.csv?from=2026-11-01&to=2026-11-30", nil)
+	req, _ := http.NewRequest("GET", c.URL+"/api/export.csv?from=2026-11-01&to=2026-11-30", nil)
 	req.Header.Set("Authorization", "Bearer "+owner)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

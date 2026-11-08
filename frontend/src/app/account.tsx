@@ -6,6 +6,9 @@ import { Account, api, Option } from '@/api';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { ACCOUNT_TYPE_COLORS, COLORS, money, showError } from '@/format';
 
+const CARD_CODE = 'credit_card';
+type Kind = 'bank' | 'card';
+
 export default function AccountFormScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const editId = params.id ? Number(params.id) : undefined;
@@ -16,6 +19,7 @@ export default function AccountFormScreen() {
   const [existing, setExisting] = useState<Account | null>(null);
   const [bankId, setBankId] = useState<number | null>(null);
   const [typeId, setTypeId] = useState<number | null>(null);
+  const [kind, setKind] = useState<Kind>('bank');
   const [name, setName] = useState('');
   const [amountText, setAmountText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -34,11 +38,14 @@ export default function AccountFormScreen() {
       setBanks(opts.banks);
       setTypes(opts.types);
       if (acc) {
+        const isCard = opts.types.find((t) => t.id === acc.type_id)?.code === CARD_CODE;
         setExisting(acc);
         setBankId(acc.bank_id);
         setTypeId(acc.type_id);
+        setKind(isCard ? 'card' : 'bank');
         setName(acc.name);
-        setAmountText(String(acc.opening_balance));
+        // A card's opening amount is shown as the positive amount owed.
+        setAmountText(String(isCard ? -acc.opening_balance || 0 : acc.opening_balance));
       }
     } catch (e) {
       setLoadError((e as Error).message);
@@ -52,16 +59,29 @@ export default function AccountFormScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
+  const isCard = kind === 'card';
+  const cardTypeId = types.find((t) => t.code === CARD_CODE)?.id ?? null;
+  const bankTypes = types.filter((t) => t.code !== CARD_CODE);
+
+  const switchKind = (k: Kind) => {
+    if (k === kind) return;
+    setKind(k);
+    setTypeId(k === 'card' ? cardTypeId : null);
+    setErrors({});
+  };
+
   const save = async () => {
     const amount = amountText.trim() === '' ? 0 : Number(amountText.replace(/,/g, ''));
+    const chosenType = isCard ? cardTypeId : typeId;
     const errs: Record<string, string> = {};
-    if (!bankId) errs.bank = 'กรุณาเลือกธนาคาร';
-    if (!typeId) errs.type = 'กรุณาเลือกประเภทบัญชี';
+    if (!bankId) errs.bank = isCard ? 'กรุณาเลือกธนาคารผู้ออกบัตร' : 'กรุณาเลือกธนาคาร';
+    if (!chosenType) errs.type = 'กรุณาเลือกประเภทบัญชี';
     if (!Number.isFinite(amount)) errs.amount = 'จำนวนเงินไม่ถูกต้อง';
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const body = { bank_id: bankId!, type_id: typeId!, name: name.trim(), opening_balance: Math.round(amount * 100) / 100 };
+    const opening = Math.round((isCard ? -amount : amount) * 100) / 100;
+    const body = { bank_id: bankId!, type_id: chosenType!, name: name.trim(), opening_balance: opening || 0 };
     setSaving(true);
     try {
       if (editId) await api.updateAccount(editId, body);
@@ -75,7 +95,7 @@ export default function AccountFormScreen() {
     }
   };
 
-  const title = isEdit ? 'แก้ไขบัญชี' : 'เพิ่มบัญชีใหม่';
+  const title = isEdit ? (isCard ? 'แก้ไขบัตรเครดิต' : 'แก้ไขบัญชี') : isCard ? 'เพิ่มบัตรเครดิต' : 'เพิ่มบัญชีใหม่';
   if (loading) return (<><Stack.Screen options={{ title }} /><Loading /></>);
   if (loadError)
     return (
@@ -89,16 +109,24 @@ export default function AccountFormScreen() {
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title }} />
 
+      <View style={styles.segment}>
+        {(['bank', 'card'] as const).map((k) => (
+          <Pressable key={k} onPress={() => switchKind(k)} style={[styles.segBtn, kind === k && styles.segBtnActive]}>
+            <Text style={[styles.segText, kind === k && { color: '#fff' }]}>{k === 'bank' ? '🏦 บัญชีธนาคาร' : '💳 บัตรเครดิต'}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       {existing && (
         <Card style={styles.balanceCard}>
-          <Text style={{ color: '#f5e9dc' }}>เงินคงเหลือปัจจุบันของบัญชีนี้</Text>
-          <Text style={styles.balanceValue}>{money(existing.balance)} บาท</Text>
+          <Text style={{ color: '#f5e9dc' }}>{isCard ? 'ยอดค้างชำระปัจจุบันของบัตรนี้' : 'เงินคงเหลือปัจจุบันของบัญชีนี้'}</Text>
+          <Text style={styles.balanceValue}>{money(isCard ? -existing.balance || 0 : existing.balance)} บาท</Text>
           <Text style={{ color: '#e8d5c0', fontSize: 12 }}>{existing.transaction_count} รายการรับ/จ่าย</Text>
         </Card>
       )}
 
       <Card style={{ gap: 16 }}>
-        <Field label="ธนาคาร" error={errors.bank}>
+        <Field label={isCard ? 'ธนาคารผู้ออกบัตร' : 'ธนาคาร'} error={errors.bank}>
           <View style={styles.pickerWrap}>
             <Picker selectedValue={bankId ?? 0} onValueChange={(v) => setBankId(Number(v) || null)} style={styles.picker}>
               <Picker.Item label="-- เลือกธนาคาร --" value={0} color={COLORS.muted} />
@@ -109,34 +137,41 @@ export default function AccountFormScreen() {
           </View>
         </Field>
 
-        <Field label="ประเภท" error={errors.type}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {types.map((t) => {
-              const active = t.id === typeId;
-              const color = ACCOUNT_TYPE_COLORS[t.code ?? ''] ?? COLORS.primary;
-              return (
-                <Pressable
-                  key={t.id}
-                  onPress={() => setTypeId(t.id)}
-                  style={[styles.typeBtn, { borderColor: color }, active && { backgroundColor: color }]}
-                >
-                  <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{t.name}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </Field>
+        {isCard ? (
+          !!errors.type && <Text style={{ color: COLORS.out, fontSize: 13 }}>{errors.type}</Text>
+        ) : (
+          <Field label="ประเภท" error={errors.type}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {bankTypes.map((t) => {
+                const active = t.id === typeId;
+                const color = ACCOUNT_TYPE_COLORS[t.code ?? ''] ?? COLORS.primary;
+                return (
+                  <Pressable
+                    key={t.id}
+                    onPress={() => setTypeId(t.id)}
+                    style={[styles.typeBtn, { borderColor: color }, active && { backgroundColor: color }]}
+                  >
+                    <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{t.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Field>
+        )}
 
-        <Field label="ชื่อบัญชี (ไม่บังคับ)">
+        <Field label={isCard ? 'ชื่อบัตร (ไม่บังคับ)' : 'ชื่อบัญชี (ไม่บังคับ)'}>
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder="เช่น บัญชีหลัก, xxx-1234"
+            placeholder={isCard ? 'เช่น บัตรหลัก, xxxx-1234' : 'เช่น บัญชีหลัก, xxx-1234'}
             style={styles.input}
           />
         </Field>
 
-        <Field label={isEdit ? 'จำนวนเงินเริ่มต้น (บาท)' : 'จำนวนเงิน (บาท)'} error={errors.amount}>
+        <Field
+          label={isCard ? (isEdit ? 'ยอดค้างชำระเริ่มต้น (บาท)' : 'ยอดค้างชำระ (บาท)') : isEdit ? 'จำนวนเงินเริ่มต้น (บาท)' : 'จำนวนเงิน (บาท)'}
+          error={errors.amount}
+        >
           <TextInput
             value={amountText}
             onChangeText={(t) => setAmountText(t.replace(/[^0-9.,-]/g, ''))}
@@ -145,7 +180,9 @@ export default function AccountFormScreen() {
             style={[styles.input, { fontSize: 18 }]}
           />
           <Text style={styles.hint}>
-            ยอดเงินในบัญชีตอนเริ่มใช้งาน รายการรับ/จ่ายที่บันทึกภายหลังจะบวก/ลบจากยอดนี้ (บัตรเครดิตที่มียอดค้าง ใส่เป็นค่าติดลบได้)
+            {isCard
+              ? 'ยอดที่ค้างชำระบนบัตรตอนเริ่มใช้งาน (ไม่มียอดค้าง ใส่ 0) การรูดบัตรที่บันทึกภายหลังจะเพิ่มยอดค้าง การจ่ายบัตรจะลดยอดค้าง'
+              : 'ยอดเงินในบัญชีตอนเริ่มใช้งาน รายการรับ/จ่ายที่บันทึกภายหลังจะบวก/ลบจากยอดนี้'}
           </Text>
         </Field>
 
@@ -190,5 +227,9 @@ const styles = StyleSheet.create({
   },
   pickerWrap: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.input, overflow: 'hidden' },
   picker: { fontSize: 16, color: COLORS.text, padding: 10, borderWidth: 0, backgroundColor: 'transparent' },
+  segment: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: 999, backgroundColor: COLORS.track },
+  segBtn: { flex: 1, paddingVertical: 10, borderRadius: 999, alignItems: 'center' },
+  segBtnActive: { backgroundColor: COLORS.primary },
+  segText: { color: COLORS.muted, fontWeight: '800' },
   typeBtn: { borderWidth: 1.5, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14 },
 });

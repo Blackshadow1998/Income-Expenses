@@ -13,9 +13,9 @@ export function loadThemePref(): string | null {
 }
 
 /** Native apps pick the new palette up the next time they start. */
-export function saveThemePref(pref: string) {
+export function saveThemePref(pref: string, title: string, message: string) {
   try {
     SecureStore.setItem(KEY, pref);
   } catch {}
-  Alert.alert('เปลี่ยนธีมแล้ว', 'ปิดแล้วเปิดแอปใหม่เพื่อใช้ธีมใหม่');
+  Alert.alert(title, message);
 }

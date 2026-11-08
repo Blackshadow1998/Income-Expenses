@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
+import { t as tr } from '../i18n'; // `t` is the ring thickness here
 
 const native = Platform.OS !== 'web';
 
@@ -77,7 +78,7 @@ export function VaultDial({ digits, length, mode, size }: { digits: string; leng
   const lit = mode === 'granted' ? TICKS : Math.round((digits.length / length) * TICKS);
 
   return (
-    <View style={{ width: size, height: size }} accessibilityLabel={`ใส่แล้ว ${digits.length} จาก ${length} หลัก`}>
+    <View style={{ width: size, height: size }} accessibilityLabel={tr('pin.entered', { n: digits.length, length })}>
       {/* Glow behind the dial when unlocked. */}
       <Animated.View
         pointerEvents="none"

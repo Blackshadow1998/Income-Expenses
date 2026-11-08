@@ -1,5 +1,6 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { Platform } from 'react-native';
+import { LANG, t } from './i18n';
 
 // Web: the built site is served by the API itself, so it uses the same origin (works behind any
 // host name / HTTPS proxy). The dev server (expo start, port 8081) talks to port 8080 on the same host.
@@ -402,13 +403,14 @@ export function resumeWaitingRequests() {
 export function cancelWaitingRequests() {
   const w = waiting;
   waiting = [];
-  w.forEach((x) => x.reject(new ApiError('กรุณาเข้าสู่ระบบ', 401, 'unauthenticated')));
+  w.forEach((x) => x.reject(new ApiError(t('api.signInRequired'), 401, 'unauthenticated')));
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // FormData sets its own multipart Content-Type (with boundary).
   const headers: Record<string, string> = init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
+  headers['Accept-Language'] = LANG;
   const res = await fetch(`${API_URL}/api${path}`, { ...init, headers });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -438,9 +440,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export async function downloadCsv(from = '', to = '') {
   await api.auth.ping(); // waits for the PIN first if the app is locked
   const res = await fetch(`${API_URL}/api/export.csv?from=${from}&to=${to}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: { 'Accept-Language': LANG, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
-  if (!res.ok) throw new ApiError(`ส่งออกไม่สำเร็จ (HTTP ${res.status})`, res.status);
+  if (!res.ok) throw new ApiError(t('api.exportFailed', { status: res.status }), res.status);
   const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'income-expenses.csv';
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a');

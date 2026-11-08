@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { COLORS, SHADOW } from '../format';
 import { GridLoader, PressScale } from './motion';
+import { t } from '../i18n';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -60,8 +61,8 @@ export function ErrorBox({ message, onRetry }: { message: string; onRetry: () =>
   return (
     <Card style={{ alignItems: 'center', gap: 10 }}>
       <Text style={{ fontSize: 28 }}>📡</Text>
-      <Text style={{ color: COLORS.out, textAlign: 'center' }}>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: {message}</Text>
-      <Button title="ลองใหม่" variant="soft" small onPress={onRetry} />
+      <Text style={{ color: COLORS.out, textAlign: 'center' }}>{t('common.connectFailed', { message })}</Text>
+      <Button title={t('common.retry')} variant="soft" small onPress={onRetry} />
     </Card>
   );
 }

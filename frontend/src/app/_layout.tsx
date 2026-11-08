@@ -6,11 +6,15 @@ import {
   LoadingScreen, NewPasswordScreen, OfflineScreen, Overlay, PinLockScreen, PinSetupScreen, SignInScreen,
 } from '@/components/AuthScreens';
 import { COLORS, IS_DARK } from '@/format';
+import { LANG, t } from '@/i18n';
 
+// Theme and language are both read synchronously at import time (before the first render), so no
+// screen is ever drawn in the wrong palette or language.
 // Behind the app on web (overscroll, browser chrome) match the theme too.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.documentElement.style.backgroundColor = COLORS.bg;
   document.body.style.backgroundColor = COLORS.bg;
+  document.documentElement.lang = LANG;
 }
 
 export default function RootLayout() {
@@ -54,20 +58,20 @@ function Gate() {
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="transaction" options={{ title: 'รายการ' }} />
-        <Stack.Screen name="account" options={{ title: 'บัญชี' }} />
-        <Stack.Screen name="change-pin" options={{ title: 'เปลี่ยน PIN' }} />
-        <Stack.Screen name="transfer" options={{ title: 'โอนระหว่างบัญชี' }} />
-        <Stack.Screen name="change-password" options={{ title: 'เปลี่ยนรหัสผ่าน' }} />
-        <Stack.Screen name="subcategories" options={{ title: 'จัดการรายการ' }} />
-        <Stack.Screen name="budgets" options={{ title: 'งบประมาณ' }} />
-        <Stack.Screen name="recurring" options={{ title: 'รายการประจำ' }} />
-        <Stack.Screen name="slip-rules" options={{ title: 'เงื่อนไขสลิป' }} />
-        <Stack.Screen name="debts" options={{ title: 'หนี้ ให้ยืม / กู้' }} />
-        <Stack.Screen name="search" options={{ title: 'ค้นหารายการ' }} />
-        <Stack.Screen name="trip" options={{ title: 'ทริป' }} />
-        <Stack.Screen name="trip-bill" options={{ title: 'บิล' }} />
-        <Stack.Screen name="trip-payment" options={{ title: 'การจ่ายเงิน' }} />
+        <Stack.Screen name="transaction" options={{ title: t('screen.transaction') }} />
+        <Stack.Screen name="account" options={{ title: t('screen.account') }} />
+        <Stack.Screen name="change-pin" options={{ title: t('screen.changePin') }} />
+        <Stack.Screen name="transfer" options={{ title: t('screen.transfer') }} />
+        <Stack.Screen name="change-password" options={{ title: t('screen.changePassword') }} />
+        <Stack.Screen name="subcategories" options={{ title: t('screen.subcategories') }} />
+        <Stack.Screen name="budgets" options={{ title: t('screen.budgets') }} />
+        <Stack.Screen name="recurring" options={{ title: t('screen.recurring') }} />
+        <Stack.Screen name="slip-rules" options={{ title: t('screen.slipRules') }} />
+        <Stack.Screen name="debts" options={{ title: t('screen.debts') }} />
+        <Stack.Screen name="search" options={{ title: t('screen.search') }} />
+        <Stack.Screen name="trip" options={{ title: t('screen.trip') }} />
+        <Stack.Screen name="trip-bill" options={{ title: t('screen.tripBill') }} />
+        <Stack.Screen name="trip-payment" options={{ title: t('screen.tripPayment') }} />
       </Stack>
       {status === 'needsPassword' && (
         <Overlay>

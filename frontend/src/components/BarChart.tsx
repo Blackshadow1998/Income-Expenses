@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, Easing, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../format';
+import { t } from '../i18n';
 
 export interface BarSeries {
   key: string;
@@ -82,7 +83,7 @@ export function BarChart({ labels, series, values, selected, onSelect, height = 
           </View>
         </ScrollView>
       )}
-      <Text style={styles.scale}>สูงสุด {compact(max)} บาท</Text>
+      <Text style={styles.scale}>{t('chart.max', { amount: compact(max) })}</Text>
     </View>
   );
 }

@@ -48,3 +48,51 @@ func TestExportCSV(t *testing.T) {
 		t.Fatalf("transfer row: %v", records[3])
 	}
 }
+
+// The header, type column and shared category names follow Accept-Language; user data does not.
+func TestExportCSVInEnglish(t *testing.T) {
+	c, _ := newTestServer(t)
+	owner := c.SignedIn("owner") // old data: 50 baht expense on 2026-11-01 (no account)
+	c.Do("POST", "/api/transactions", owner, map[string]any{"date": "2026-11-02", "category_id": 1, "account_id": 1, "amount": 10, "note": "เงินเดือน"})
+	_, acc := c.Do("POST", "/api/accounts", owner, map[string]any{"bank_id": 3, "type_id": 1, "opening_balance": 0})
+	c.Do("POST", "/api/transfers", owner, map[string]any{"date": "2026-11-03", "from_account_id": 1, "to_account_id": acc["id"], "amount": 100})
+
+	for lang, want := range map[string][][]string{
+		"en": {
+			{"Date", "Type", "Category", "Item", "Amount", "Account", "Payee / to account", "Details"},
+			{"2026-11-01", "Expense", "Expense", "ค่าอาหาร - น้ำ", "-50.00", "No account"}, // the user's item stays as stored
+			{"2026-11-02", "Income", "Income", "", "10.00"},
+			{"2026-11-03", "Transfer between accounts"},
+		},
+		"th": {
+			{"วันที่", "ประเภท", "หมวด", "รายการ", "จำนวนเงิน", "บัญชี", "ผู้รับ / ไปบัญชี", "รายละเอียด"},
+			{"2026-11-01", "รายจ่าย", "จ่าย", "ค่าอาหาร - น้ำ", "-50.00", "ไม่ระบุบัญชี"},
+			{"2026-11-02", "รายรับ", "รับ", "", "10.00"},
+			{"2026-11-03", "โอนระหว่างบัญชี"},
+		},
+	} {
+		req, _ := http.NewRequest("GET", c.URL+"/api/export.csv?from=2026-11-01&to=2026-11-30", nil)
+		req.Header.Set("Authorization", "Bearer "+owner)
+		req.Header.Set("Accept-Language", lang)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		records, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\uFEFF"))).ReadAll()
+		if err != nil || len(records) != len(want) {
+			t.Fatalf("%s: %v %v", lang, err, records)
+		}
+		for i, row := range want {
+			for j, cell := range row {
+				if records[i][j] != cell {
+					t.Errorf("%s row %d col %d = %q, want %q", lang, i, j, records[i][j], cell)
+				}
+			}
+		}
+		if records[2][7] != "เงินเดือน" { // the user's note is never translated
+			t.Errorf("%s: note = %q", lang, records[2][7])
+		}
+	}
+}

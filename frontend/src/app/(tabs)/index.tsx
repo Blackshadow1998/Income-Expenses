@@ -13,8 +13,9 @@ import { PeriodSwitch } from '@/components/PeriodSwitch';
 import { Button, Card, ErrorBox, IconBubble, Stepper } from '@/components/ui';
 import {
   CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, currentMonth, dateLabel, GRADIENTS, money, monthLabel,
-  MONTHS_SHORT, SHADOW, shiftMonth, showError, showInfo, toISODate,
+  MONTHS_SHORT, SHADOW, shiftMonth, showError, showInfo, toISODate, yearLabel, accountLabel,
 } from '@/format';
+import { t, tCode, tList } from '@/i18n';
 import { takePendingMonth } from '@/state';
 
 export default function MonthScreen() {
@@ -86,14 +87,14 @@ export default function MonthScreen() {
     }, [loadAll]),
   );
 
-  const onDelete = async (t: Transaction) => {
+  const onDelete = async (txn: Transaction) => {
     const ok = await confirmAsync(
-      'ลบรายการ',
-      `ต้องการลบ "${t.category_name} ${money(t.amount)} บาท" วันที่ ${dateLabel(t.date)} ใช่หรือไม่?`,
+      t('month.deleteTitle'),
+      t('month.deleteBody', { name: tCode('category', txn.category_code, txn.category_name), amount: money(txn.amount), date: dateLabel(txn.date) }),
     );
     if (!ok) return;
     try {
-      await api.remove(t.id);
+      await api.remove(txn.id);
       await loadAll(monthRef.current);
     } catch (e) {
       showError(e);
@@ -113,7 +114,7 @@ export default function MonthScreen() {
     if (source === 'camera') {
       // On web the camera must open straight from the tap, so there is no permission round-trip first.
       if (Platform.OS !== 'web' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) {
-        showError(new Error('ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องให้แอปในการตั้งค่าเครื่อง'));
+        showError(new Error(t('photo.cameraDenied')));
         return;
       }
       picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.9 });
@@ -128,9 +129,9 @@ export default function MonthScreen() {
       const lines = results.map((r) =>
         r.error
           ? `✗ ${r.file}: ${r.error}`
-          : `✓ ${r.file}: ${r.slip!.amount > 0 ? money(r.slip!.amount) + ' บาท' : 'ไม่พบจำนวนเงิน'} (${dateLabel(r.slip!.date)})`,
+          : `✓ ${r.file}: ${r.slip!.amount > 0 ? t('money.bahtValue', { amount: money(r.slip!.amount) }) : t('slip.noAmount')} (${dateLabel(r.slip!.date)})`,
       );
-      showInfo(`อ่านสลิปสำเร็จ ${ok.length}/${results.length} ใบ`, `${lines.join('\n')}\n\nกด "คอนเฟิร์ม" เพื่อตรวจและใส่รายละเอียด`);
+      showInfo(t('month.slipsRead', { ok: ok.length, total: results.length }), `${lines.join('\n')}\n\n${t('month.slipsReadHint')}`);
       const target = (ok[0] ?? results.find((r) => r.slip))?.slip?.date.slice(0, 7);
       await loadAll(target ?? monthRef.current);
     } catch (e) {
@@ -141,7 +142,8 @@ export default function MonthScreen() {
   };
 
   const onDeleteSlip = async (sl: Slip) => {
-    if (!(await confirmAsync('ลบสลิป', `ต้องการลบสลิป ${sl.amount > 0 ? money(sl.amount) + ' บาท ' : ''}วันที่ ${dateLabel(sl.date)} ใช่หรือไม่?`))) return;
+    const amount = sl.amount > 0 ? `${t('money.bahtValue', { amount: money(sl.amount) })} ` : '';
+    if (!(await confirmAsync(t('month.deleteSlipTitle'), t('month.deleteSlipBody', { amount, date: dateLabel(sl.date) })))) return;
     try {
       await api.removeSlip(sl.id);
       await loadAll(monthRef.current);
@@ -158,7 +160,7 @@ export default function MonthScreen() {
       pathname: '/transaction',
       params: { ...(month ? { month } : {}), ...dayParam, ...(accountId ? { accountId: String(accountId) } : {}) },
     });
-  const goEdit = (t: Transaction) => router.push({ pathname: '/transaction', params: { id: String(t.id) } });
+  const goEdit = (txn: Transaction) => router.push({ pathname: '/transaction', params: { id: String(txn.id) } });
   const goTransfer = (tr?: Transfer) =>
     router.push({
       pathname: '/transfer',
@@ -168,7 +170,7 @@ export default function MonthScreen() {
     });
 
   const onDeleteTransfer = async (tr: Transfer) => {
-    if (!(await confirmAsync('ลบรายการโอน', `ต้องการลบรายการโอน ${money(tr.amount)} บาท วันที่ ${dateLabel(tr.date)} ใช่หรือไม่?`))) return;
+    if (!(await confirmAsync(t('transfer.deleteTitle'), t('transfer.deleteBodyDate', { amount: money(tr.amount), date: dateLabel(tr.date) })))) return;
     try {
       await api.removeTransfer(tr.id);
       await loadAll(monthRef.current);
@@ -195,21 +197,21 @@ export default function MonthScreen() {
             onNext={() => month && loadMonth(shiftMonth(month, 1))}
           />
           <View style={{ alignItems: 'center', gap: 2, marginTop: 6 }}>
-            <Text style={styles.heroLabel}>{accountId ? 'เงินคงเหลือบัญชีนี้' : 'เงินคงเหลือทุกบัญชี'}</Text>
+            <Text style={styles.heroLabel}>{accountId ? t('month.balanceAccount') : t('month.balanceAll')}</Text>
             {data ? (
               <AnimatedNumber value={data.balance} format={money} style={styles.heroValue} />
             ) : (
               <Skeleton style={{ width: 200, height: 40, backgroundColor: 'rgba(255,255,255,0.35)' }} />
             )}
-            <Text style={styles.heroLabel}>บาท</Text>
+            <Text style={styles.heroLabel}>{t('money.baht')}</Text>
           </View>
           <View style={styles.heroStats}>
-            <HeroStat icon="↓" label="เงินเข้า" value={data?.totals.in} dot="#4ade80" />
-            <HeroStat icon="↑" label="เงินออก" value={data?.totals.out} dot="#fca5a5" />
+            <HeroStat icon="↓" label={t('money.in')} value={data?.totals.in} dot="#4ade80" />
+            <HeroStat icon="↑" label={t('money.out')} value={data?.totals.out} dot="#fca5a5" />
           </View>
           {data && (
             <Text style={styles.heroNet}>
-              สุทธิเดือนนี้ {data.totals.net >= 0 ? '+' : ''}
+              {t('month.net')} {data.totals.net >= 0 ? '+' : ''}
               {money(data.totals.net)}
             </Text>
           )}
@@ -224,7 +226,7 @@ export default function MonthScreen() {
             return (
               <PressScale key={m} onPress={() => loadMonth(m)} style={[styles.chip, active && styles.chipActive]}>
                 <Text style={[styles.chipText, active && { color: '#fff' }]}>
-                  {MONTHS_SHORT[mm - 1]} {String(y + 543).slice(2)}
+                  {MONTHS_SHORT[mm - 1]} {yearLabel(y).slice(2)}
                 </Text>
               </PressScale>
             );
@@ -255,26 +257,26 @@ export default function MonthScreen() {
 
           <FadeIn delay={200} style={styles.actions}>
             <Button
-              title={uploading ? 'กำลังอ่าน...' : 'สลิป'}
+              title={uploading ? t('month.reading') : t('month.slip')}
               icon="📷"
               variant="soft"
               onPress={() => setSlipMenu((v) => !v)}
               disabled={uploading}
               style={{ flex: 1 }}
             />
-            <Button title="โอน" icon="⇄" variant="soft" onPress={() => goTransfer()} style={{ flex: 1 }} />
-            <Button title="เพิ่ม" icon="＋" onPress={goAdd} style={{ flex: 1.2 }} />
+            <Button title={t('month.transfer')} icon="⇄" variant="soft" onPress={() => goTransfer()} style={{ flex: 1 }} />
+            <Button title={t('month.add')} icon="＋" onPress={goAdd} style={{ flex: 1.2 }} />
           </FadeIn>
           {slipMenu && (
             <FadeIn from={-8} style={styles.slipMenu}>
-              <Button title="ถ่ายรูปสลิป" icon="📸" variant="outline" onPress={() => onReadSlips('camera')} style={{ flex: 1 }} />
-              <Button title="เลือกจากคลังภาพ" icon="🖼️" variant="outline" onPress={() => onReadSlips('library')} style={{ flex: 1 }} />
+              <Button title={t('month.slipCamera')} icon="📸" variant="outline" onPress={() => onReadSlips('camera')} style={{ flex: 1 }} />
+              <Button title={t('month.slipLibrary')} icon="🖼️" variant="outline" onPress={() => onReadSlips('library')} style={{ flex: 1 }} />
             </FadeIn>
           )}
 
           {data.pending.length > 0 && (
             <View style={{ gap: 8 }}>
-              <Text style={styles.pendingHeader}>🧾 รอคอนเฟิร์ม ({data.pending.length}) — ยังไม่นับรวมในยอดเงิน</Text>
+              <Text style={styles.pendingHeader}>{t('month.pending', { n: data.pending.length })}</Text>
               {data.pending.map((sl, i) => (
                 <FadeIn key={sl.id} delay={240 + i * 50}>
                   <PendingSlipCard slip={sl} onConfirm={() => goConfirm(sl)} onDelete={() => onDeleteSlip(sl)} />
@@ -286,14 +288,14 @@ export default function MonthScreen() {
           <View style={styles.listHeader}>
             <Text style={styles.h2}>
               {day === 'all' || !day
-                ? 'รายการทั้งเดือน'
+                ? t('month.listAll')
                 : day === toISODate(new Date())
-                  ? 'รายการวันนี้'
-                  : `รายการ ${Number(day.slice(8))} ${MONTHS_SHORT[Number(day.slice(5, 7)) - 1]}`}{' '}
+                  ? t('month.listToday')
+                  : t('month.listDay', { day: Number(day.slice(8)), month: MONTHS_SHORT[Number(day.slice(5, 7)) - 1] })}{' '}
               ({entryCount})
             </Text>
-            <PressScale onPress={() => router.push('/search')} scaleTo={0.92} style={styles.searchBtn} accessibilityLabel="ค้นหารายการ">
-              <Text style={{ color: COLORS.primary, fontWeight: '700' }}>🔍 ค้นหา</Text>
+            <PressScale onPress={() => router.push('/search')} scaleTo={0.92} style={styles.searchBtn} accessibilityLabel={t('month.search')}>
+              <Text style={{ color: COLORS.primary, fontWeight: '700' }}>{t('month.searchBtn')}</Text>
             </PressScale>
           </View>
 
@@ -308,7 +310,7 @@ export default function MonthScreen() {
               <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 28 }}>
                 <Text style={{ fontSize: 36 }}>🪴</Text>
                 <Text style={{ color: COLORS.muted }}>
-                  {day === 'all' ? 'ยังไม่มีรายการในเดือนนี้' : `ไม่มีรายการวันที่ ${dateLabel(day)}`}
+                  {day === 'all' ? t('month.emptyMonth') : t('month.emptyDay', { date: dateLabel(day) })}
                 </Text>
               </Card>
             </FadeIn>
@@ -327,11 +329,12 @@ export default function MonthScreen() {
                 <Card style={{ padding: 0, overflow: 'hidden' }}>
                   {g.entries.map((e, i) =>
                     e.kind === 'txn' ? (
-                      <TxnRow key={`t${e.t.id}`} t={e.t} first={i === 0} onPress={() => goEdit(e.t)} onDelete={() => onDelete(e.t)} />
+                      <TxnRow key={`t${e.t.id}`} txn={e.t} accounts={accounts} first={i === 0} onPress={() => goEdit(e.t)} onDelete={() => onDelete(e.t)} />
                     ) : (
                       <TransferRow
                         key={`tr${e.tr.id}`}
                         tr={e.tr}
+                        accounts={accounts}
                         accountId={accountId}
                         first={i === 0}
                         onPress={() => goTransfer(e.tr)}
@@ -372,7 +375,7 @@ function CategoryBreakdown({ categories, totals }: { categories: Category[]; tot
   const sum = categories.reduce((s, c) => s + (totals[c.code] ?? 0), 0);
   return (
     <Card style={{ gap: 12 }}>
-      <Text style={styles.h3}>สัดส่วนเดือนนี้</Text>
+      <Text style={styles.h3}>{t('month.breakdown')}</Text>
       <View style={styles.track}>
         {sum > 0 &&
           categories.map((c, i) => (
@@ -387,7 +390,7 @@ function CategoryBreakdown({ categories, totals }: { categories: Category[]; tot
               <IconBubble icon={CATEGORY_ICONS[c.code]} tint={CATEGORY_TINTS[c.code]} size={34} />
               <View style={{ flexShrink: 1 }}>
                 <Text style={{ color: COLORS.muted, fontSize: 12 }}>
-                  {c.name}
+                  {tCode('category', c.code, c.name)}
                   {sum > 0 && v > 0 ? ` · ${Math.round((v / sum) * 100)}%` : ''}
                 </Text>
                 <Text style={{ color: COLORS.text, fontWeight: '700' }}>{money(v)}</Text>
@@ -400,42 +403,52 @@ function CategoryBreakdown({ categories, totals }: { categories: Category[]; tot
   );
 }
 
-function TxnRow({ t, first, onPress, onDelete }: { t: Transaction; first: boolean; onPress: () => void; onDelete: () => void }) {
-  const title = t.subcategory_name || t.note || t.category_name;
-  const sub = [t.subcategory_name || t.note ? t.category_name : '', t.account_label || 'ไม่ระบุบัญชี'].filter(Boolean).join(' · ');
+function TxnRow({ txn, accounts, first, onPress, onDelete }: {
+  txn: Transaction;
+  accounts: Account[];
+  first: boolean;
+  onPress: () => void;
+  onDelete: () => void;
+}) {
+  const category = tCode('category', txn.category_code, txn.category_name);
+  const account = accounts.find((a) => a.id === txn.account_id);
+  const title = txn.subcategory_name || txn.note || category;
+  const sub = [txn.subcategory_name || txn.note ? category : '', (account ? accountLabel(account) : txn.account_label) || t('month.noAccount')]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <PressScale onPress={onPress} scaleTo={0.98} style={[styles.row, !first && styles.rowDivider]}>
-      <IconBubble icon={CATEGORY_ICONS[t.category_code]} tint={CATEGORY_TINTS[t.category_code]} />
+      <IconBubble icon={CATEGORY_ICONS[txn.category_code]} tint={CATEGORY_TINTS[txn.category_code]} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={styles.rowTitle} numberOfLines={1}>
-          {t.recurring_id ? '🔁 ' : ''}
+          {txn.recurring_id ? '🔁 ' : ''}
           {title}
         </Text>
-        <Text style={[styles.rowSub, !t.account_label && { fontStyle: 'italic' }]} numberOfLines={1}>
+        <Text style={[styles.rowSub, !txn.account_label && { fontStyle: 'italic' }]} numberOfLines={1}>
           {sub}
         </Text>
-        {!!t.payee && (
+        {!!txn.payee && (
           <Text style={styles.rowSub} numberOfLines={1}>
-            👤 {t.payee}
+            👤 {txn.payee}
           </Text>
         )}
-        {!!t.slip_id && (
+        {!!txn.slip_id && (
           <Text style={styles.rowSub} numberOfLines={1}>
-            🧾 {t.slip_from || '-'} → {t.slip_to || '-'}
+            🧾 {txn.slip_from || '-'} → {txn.slip_to || '-'}
           </Text>
         )}
-        {!!t.subcategory_name && !!t.note && (
+        {!!txn.subcategory_name && !!txn.note && (
           <Text style={[styles.rowSub, { color: COLORS.text }]} numberOfLines={2}>
-            {t.note}
+            {txn.note}
           </Text>
         )}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
-        <Text style={[styles.amount, { color: t.direction > 0 ? COLORS.in : COLORS.out }]}>
-          {t.direction > 0 ? '+' : '−'}
-          {money(t.amount)}
+        <Text style={[styles.amount, { color: txn.direction > 0 ? COLORS.in : COLORS.out }]}>
+          {txn.direction > 0 ? '+' : '−'}
+          {money(txn.amount)}
         </Text>
-        <PressScale onPress={onDelete} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel="ลบรายการ">
+        <PressScale onPress={onDelete} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel={t('month.deleteTitle')}>
           <Text style={{ fontSize: 13 }}>🗑️</Text>
         </PressScale>
       </View>
@@ -444,23 +457,29 @@ function TxnRow({ t, first, onPress, onDelete }: { t: Transaction; first: boolea
 }
 
 /** Transfer between own accounts: neutral colour, or +/− when the list is filtered to one of its accounts. */
-function TransferRow({ tr, accountId, first, onPress, onDelete }: {
+function TransferRow({ tr, accounts, accountId, first, onPress, onDelete }: {
   tr: Transfer;
+  accounts: Account[];
   accountId: number | null;
   first: boolean;
   onPress: () => void;
   onDelete: () => void;
 }) {
+  // Labels in the app's language when the account is known (the server builds them in Thai).
+  const sideLabel = (id: number, fallback: string) => {
+    const a = accounts.find((x) => x.id === id);
+    return a ? accountLabel(a, true) : fallback;
+  };
   const sign = accountId === tr.to_account_id ? '+' : accountId === tr.from_account_id ? '−' : '';
   return (
     <PressScale onPress={onPress} scaleTo={0.98} style={[styles.row, !first && styles.rowDivider]}>
       <IconBubble icon="⇄" tint={COLORS.primarySoft} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={styles.rowTitle} numberOfLines={1}>
-          {tr.note || 'โอนระหว่างบัญชี'}
+          {tr.note || t('transfer.title')}
         </Text>
         <Text style={styles.rowSub} numberOfLines={2}>
-          {tr.from_label} → {tr.to_label}
+          {sideLabel(tr.from_account_id, tr.from_label)} → {sideLabel(tr.to_account_id, tr.to_label)}
         </Text>
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -468,7 +487,7 @@ function TransferRow({ tr, accountId, first, onPress, onDelete }: {
           {sign}
           {money(tr.amount)}
         </Text>
-        <PressScale onPress={onDelete} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel="ลบรายการโอน">
+        <PressScale onPress={onDelete} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel={t('transfer.deleteTitle')}>
           <Text style={{ fontSize: 13 }}>🗑️</Text>
         </PressScale>
       </View>
@@ -501,7 +520,7 @@ function defaultDay(month: string, d: MonthData): string {
   return dates[dates.length - 1] ?? `${month}-01`;
 }
 
-const WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+const WEEKDAYS = tList('month.weekdays');
 const DAY_W = 46;
 const DAY_GAP = 6;
 
@@ -534,8 +553,8 @@ function DayStrip({ month, selected, marked, onSelect }: {
       contentContainerStyle={{ gap: DAY_GAP, paddingVertical: 2 }}
     >
       <PressScale onPress={() => onSelect('all')} style={[styles.day, styles.dayAll, selected === 'all' && styles.dayOn]}>
-        <Text style={[styles.dayWeek, selected === 'all' && styles.dayTextOn]}>ทั้ง</Text>
-        <Text style={[styles.dayAllText, selected === 'all' && styles.dayTextOn]}>เดือน</Text>
+        <Text style={[styles.dayWeek, selected === 'all' && styles.dayTextOn]}>{t('month.allTop')}</Text>
+        <Text style={[styles.dayAllText, selected === 'all' && styles.dayTextOn]}>{t('month.allBottom')}</Text>
       </PressScale>
       {Array.from({ length: count }, (_, i) => {
         const iso = `${month}-${String(i + 1).padStart(2, '0')}`;

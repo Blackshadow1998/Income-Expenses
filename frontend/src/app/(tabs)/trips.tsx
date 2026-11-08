@@ -5,6 +5,7 @@ import { api, TripListItem } from '@/api';
 import { FadeIn, PressScale, Skeleton } from '@/components/motion';
 import { Button, Card, ErrorBox, IconBubble } from '@/components/ui';
 import { COLORS, money, showError } from '@/format';
+import { t } from '@/i18n';
 
 /** Trips to split bills for: list + a quick "new trip" form (name and members). */
 export default function TripsScreen() {
@@ -41,16 +42,16 @@ export default function TripsScreen() {
   const create = async () => {
     const pending = memberText.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
     const all = [...members, ...pending.filter((n) => !members.includes(n))];
-    if (!name.trim()) return showError(new Error('กรุณาตั้งชื่อทริป'));
-    if (all.length < 2) return showError(new Error('ใส่สมาชิกอย่างน้อย 2 คน'));
+    if (!name.trim()) return showError(new Error(t('trips.nameError')));
+    if (all.length < 2) return showError(new Error(t('trips.membersError')));
     setSaving(true);
     try {
-      const t = await api.createTrip(name.trim(), all);
+      const created = await api.createTrip(name.trim(), all);
       setCreating(false);
       setName('');
       setMembers([]);
       setMemberText('');
-      router.push({ pathname: '/trip', params: { id: String(t.id) } });
+      router.push({ pathname: '/trip', params: { id: String(created.id) } });
     } catch (e) {
       showError(e);
     } finally {
@@ -64,8 +65,8 @@ export default function TripsScreen() {
         <Card style={styles.intro}>
           <Text style={{ fontSize: 30 }}>🧾</Text>
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.h2}>หารบิลทริป</Text>
-            <Text style={styles.hint}>ลงบิลที่จ่ายไประหว่างเที่ยว แล้วดูว่าใครต้องโอนให้ใคร เท่าไหร่ พร้อมติดตามการจ่าย</Text>
+            <Text style={styles.h2}>{t('trips.title')}</Text>
+            <Text style={styles.hint}>{t('trips.hint')}</Text>
           </View>
         </Card>
       </FadeIn>
@@ -73,36 +74,36 @@ export default function TripsScreen() {
       {creating ? (
         <FadeIn from={-8}>
           <Card style={{ gap: 10 }}>
-            <Text style={styles.h3}>ทริปใหม่</Text>
-            <TextInput value={name} onChangeText={setName} maxLength={60} placeholder="ชื่อทริป เช่น เชียงใหม่ ปีใหม่" placeholderTextColor={COLORS.muted} style={styles.input} />
+            <Text style={styles.h3}>{t('trips.new')}</Text>
+            <TextInput value={name} onChangeText={setName} maxLength={60} placeholder={t('trips.namePh')} placeholderTextColor={COLORS.muted} style={styles.input} />
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TextInput
                 value={memberText}
                 onChangeText={setMemberText}
                 onSubmitEditing={addMembers}
-                placeholder="ชื่อสมาชิก (เว้นวรรคเพื่อใส่หลายคน)"
+                placeholder={t('trips.membersPh')}
                 placeholderTextColor={COLORS.muted}
                 style={[styles.input, { flex: 1 }]}
               />
-              <Button title="เพิ่ม" variant="soft" onPress={addMembers} />
+              <Button title={t('month.add')} variant="soft" onPress={addMembers} />
             </View>
             {members.length > 0 && (
               <View style={styles.chips}>
                 {members.map((m) => (
-                  <PressScale key={m} onPress={() => setMembers((ms) => ms.filter((x) => x !== m))} style={styles.chip} accessibilityLabel={`เอา ${m} ออก`}>
+                  <PressScale key={m} onPress={() => setMembers((ms) => ms.filter((x) => x !== m))} style={styles.chip} accessibilityLabel={t('trips.removeMember', { name: m })}>
                     <Text style={styles.chipText}>{m} ✕</Text>
                   </PressScale>
                 ))}
               </View>
             )}
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => setCreating(false)} />
-              <Button title={saving ? 'กำลังสร้าง...' : 'สร้างทริป'} style={{ flex: 1 }} onPress={create} disabled={saving} />
+              <Button title={t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={() => setCreating(false)} />
+              <Button title={saving ? t('trips.creating') : t('trips.create')} style={{ flex: 1 }} onPress={create} disabled={saving} />
             </View>
           </Card>
         </FadeIn>
       ) : (
-        <Button title="สร้างทริปใหม่" icon="＋" onPress={() => setCreating(true)} />
+        <Button title={t('trips.createNew')} icon="＋" onPress={() => setCreating(true)} />
       )}
 
       {error ? (
@@ -113,19 +114,19 @@ export default function TripsScreen() {
         !creating && (
           <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 28 }}>
             <Text style={{ fontSize: 36 }}>🏝️</Text>
-            <Text style={{ color: COLORS.muted }}>ยังไม่มีทริป กด &quot;สร้างทริปใหม่&quot; เพื่อเริ่ม</Text>
+            <Text style={{ color: COLORS.muted }}>{t('trips.empty')}</Text>
           </Card>
         )
       ) : (
-        trips.map((t, i) => (
-          <FadeIn key={t.id} delay={i * 50}>
-            <PressScale onPress={() => router.push({ pathname: '/trip', params: { id: String(t.id) } })} scaleTo={0.98} style={styles.row}>
+        trips.map((trip, i) => (
+          <FadeIn key={trip.id} delay={i * 50}>
+            <PressScale onPress={() => router.push({ pathname: '/trip', params: { id: String(trip.id) } })} scaleTo={0.98} style={styles.row}>
               <IconBubble icon="🧳" tint={COLORS.primarySoft} />
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.name} numberOfLines={1}>{t.name}</Text>
-                <Text style={styles.hint}>{t.member_count} คน · {t.bill_count} บิล</Text>
+                <Text style={styles.name} numberOfLines={1}>{trip.name}</Text>
+                <Text style={styles.hint}>{t('trips.counts', { members: trip.member_count, bills: trip.bill_count })}</Text>
               </View>
-              <Text style={styles.total}>{money(t.total)}</Text>
+              <Text style={styles.total}>{money(trip.total)}</Text>
             </PressScale>
           </FadeIn>
         ))

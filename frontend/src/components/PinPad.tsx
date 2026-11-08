@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { Animated, Easing, LayoutRectangle, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { FadeIn, GridLoader, PressScale, Shake, ShakeHandle } from './motion';
 import { ringTop, VAULT, VaultDial } from './VaultDial';
+import { t } from '../i18n';
 
 export const PIN_LENGTH = 6;
 
@@ -189,7 +190,7 @@ export function PinPad({
           onPress={() => press('⌫')}
           onLongPress={() => press('clear')}
           disabled={digits.length === 0 || granted}
-          accessibilityLabel="ลบตัวเลข (กดค้างเพื่อลบทั้งหมด)"
+          accessibilityLabel={t('pin.deleteDigit')}
           scaleTo={0.88}
           containerStyle={[styles.keySpot, { right: 0, bottom: 0 }]}
           style={[styles.key, styles.keyDelete, keyShape]}
@@ -199,7 +200,7 @@ export function PinPad({
       </View>
       <View style={styles.status}>
         {granted ? (
-          <Text style={styles.granted}>ปลดล็อกแล้ว</Text>
+          <Text style={styles.granted}>{t('pin.unlocked')}</Text>
         ) : busy ? (
           <GridLoader size={22} />
         ) : (
@@ -231,13 +232,13 @@ function Prompt({ visible, title, subtitle, error, onDismiss }: {
   }, [v, visible]);
   return (
     <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[StyleSheet.absoluteFill, styles.promptBack, { opacity: v }]}>
-      <Pressable onPress={onDismiss} style={styles.promptFill} accessibilityRole="button" accessibilityLabel={`${title} แตะเพื่อเริ่ม`}>
+      <Pressable onPress={onDismiss} style={styles.promptFill} accessibilityRole="button" accessibilityLabel={`${title} ${t('pin.tapToStart')}`}>
         <Animated.View style={[styles.promptCard, { transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
           <Text style={{ fontSize: 34 }}>🔐</Text>
           <Text style={styles.title}>{title}</Text>
           {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
           {visible && !!error && <Text style={styles.error}>{error}</Text>}
-          <Text style={styles.tapHint}>แตะเพื่อเริ่ม</Text>
+          <Text style={styles.tapHint}>{t('pin.tapToStart')}</Text>
         </Animated.View>
       </Pressable>
     </Animated.View>

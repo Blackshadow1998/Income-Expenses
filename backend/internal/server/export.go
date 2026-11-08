@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"income-expenses/internal/httpx"
+	"income-expenses/internal/i18n"
 )
 
 // exportCSV downloads the user's transactions and transfers in [from, to] (YYYY-MM-DD, optional) as CSV.
-// The UTF-8 BOM makes Excel read the Thai text correctly.
+// The UTF-8 BOM makes Excel read the Thai text correctly. The header, the type column and the shared
+// category names follow Accept-Language; the user's own data is written as stored.
 func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
 	from, to := r.URL.Query().Get("from"), r.URL.Query().Get("to")
 	for _, d := range []string{from, to} {
@@ -59,22 +61,25 @@ func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.csv"`)
 	w.Write([]byte("\uFEFF"))
+	lang := i18n.FromContext(r.Context())
+	text := func(s string) string { return i18n.T(lang, s) }
 	cw := csv.NewWriter(w)
-	cw.Write([]string{"วันที่", "ประเภท", "หมวด", "รายการ", "จำนวนเงิน", "บัญชี", "ผู้รับ / ไปบัญชี", "รายละเอียด"})
+	cw.Write([]string{text("วันที่"), text("ประเภท"), text("หมวด"), text("รายการ"), text("จำนวนเงิน"), text("บัญชี"), text("ผู้รับ / ไปบัญชี"), text("รายละเอียด")})
 	amount := func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
 	for _, t := range txns {
-		kind := "รายจ่าย"
+		kind := text("รายจ่าย")
 		if t.Direction > 0 {
-			kind = "รายรับ"
+			kind = text("รายรับ")
 		}
 		account := t.AccountLabel
 		if account == "" {
-			account = "ไม่ระบุบัญชี"
+			account = text("ไม่ระบุบัญชี")
 		}
-		cw.Write([]string{t.Date, kind, t.CategoryName, t.SubcategoryName, amount(float64(t.Direction) * t.Amount), account, t.Payee, t.Note})
+		category := i18n.Category(lang, t.CategoryCode, t.CategoryName)
+		cw.Write([]string{t.Date, kind, category, t.SubcategoryName, amount(float64(t.Direction) * t.Amount), account, t.Payee, t.Note})
 	}
 	for _, tr := range transfers {
-		cw.Write([]string{tr.Date, "โอนระหว่างบัญชี", "", "", amount(tr.Amount), tr.FromLabel, tr.ToLabel, tr.Note})
+		cw.Write([]string{tr.Date, text("โอนระหว่างบัญชี"), "", "", amount(tr.Amount), tr.FromLabel, tr.ToLabel, tr.Note})
 	}
 	cw.Flush()
 }

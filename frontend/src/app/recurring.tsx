@@ -5,8 +5,9 @@ import { Account, api, Category, Recurring, RecurringInput } from '@/api';
 import { FadeIn, PressScale } from '@/components/motion';
 import { Button, Card, ErrorBox, IconBubble, Loading } from '@/components/ui';
 import {
-  CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, dateLabel, money, showError, showInfo,
+  accountLabel, CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, dateLabel, money, showError, showInfo,
 } from '@/format';
+import { t, tCode } from '@/i18n';
 
 const EMPTY = { day: '', categoryId: null as number | null, subcategoryId: null as number | null, accountId: null as number | null, amount: '', note: '' };
 
@@ -53,11 +54,11 @@ export default function RecurringScreen() {
 
   const save = async () => {
     const b = body(rules?.find((r) => r.id === editId)?.active ?? true);
-    if (!b) return showError(new Error('กรุณาใส่วันที่ 1–31, หมวด, บัญชี และจำนวนเงิน'));
+    if (!b) return showError(new Error(t('recurring.fillError')));
     setSaving(true);
     try {
       const res = await api.saveRecurring(editId, b);
-      if (res.created_transactions > 0) showInfo('สร้างรายการแล้ว', `สร้างรายการของรอบนี้ ${res.created_transactions} รายการ`);
+      if (res.created_transactions > 0) showInfo(t('recurring.createdTitle'), t('recurring.createdBody', { n: res.created_transactions }));
       setEditId(null);
       setForm((f) => ({ ...EMPTY, categoryId: f.categoryId, accountId: f.accountId }));
       await load();
@@ -83,7 +84,7 @@ export default function RecurringScreen() {
   };
 
   const remove = async (r: Recurring) => {
-    if (!(await confirmAsync('ลบรายการประจำ', `ต้องการลบ "${r.note || r.subcategory_name || r.category_name}" ใช่หรือไม่?\nรายการที่สร้างไปแล้วจะยังอยู่`))) return;
+    if (!(await confirmAsync(t('recurring.deleteTitle'), t('recurring.deleteBody', { name: r.note || r.subcategory_name || tCode('category', r.category_code, r.category_name) })))) return;
     try {
       await api.removeRecurring(r.id);
       if (editId === r.id) setEditId(null);
@@ -96,17 +97,23 @@ export default function RecurringScreen() {
   if (error) return <View style={styles.page}><ErrorBox message={error} onRetry={load} /></View>;
   if (!rules) return <Loading />;
 
+  // The server builds account labels in Thai; use the app's language when the account is in the list.
+  const labelOf = (id: number, fallback: string) => {
+    const a = accounts.find((x) => x.id === id);
+    return a ? accountLabel(a) : fallback;
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Card style={{ gap: 12 }}>
-        <Text style={styles.h2}>{editId ? 'แก้ไขรายการประจำ' : 'เพิ่มรายการประจำ'}</Text>
+        <Text style={styles.h2}>{editId ? t('recurring.edit') : t('recurring.add')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {categories.map((c) => {
             const active = c.id === form.categoryId;
             const color = CATEGORY_COLORS[c.code];
             return (
               <PressScale key={c.id} onPress={() => set({ categoryId: c.id, subcategoryId: null })} style={[styles.chip, { borderColor: color }, active && { backgroundColor: color }]}>
-                <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{CATEGORY_ICONS[c.code]} {c.name}</Text>
+                <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{CATEGORY_ICONS[c.code]} {tCode('category', c.code, c.name)}</Text>
               </PressScale>
             );
           })}
@@ -114,46 +121,46 @@ export default function RecurringScreen() {
         {!!category?.subcategories.length && (
           <View style={styles.pickerWrap}>
             <Picker selectedValue={form.subcategoryId ?? 0} onValueChange={(v) => set({ subcategoryId: Number(v) || null })} style={styles.picker}>
-              <Picker.Item label="-- รายการ: ไม่ระบุ --" value={0} />
+              <Picker.Item label={t('form.itemNone')} value={0} />
               {category.subcategories.map((s) => <Picker.Item key={s.id} label={s.name} value={s.id} />)}
             </Picker>
           </View>
         )}
         <View style={styles.pickerWrap}>
           <Picker selectedValue={form.accountId ?? 0} onValueChange={(v) => set({ accountId: Number(v) || null })} style={styles.picker}>
-            <Picker.Item label="-- เลือกบัญชี --" value={0} />
-            {accounts.map((a) => <Picker.Item key={a.id} label={a.label} value={a.id} />)}
+            <Picker.Item label={t('form.pickAccount')} value={0} />
+            {accounts.map((a) => <Picker.Item key={a.id} label={accountLabel(a)} value={a.id} />)}
           </Picker>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TextInput value={form.day} onChangeText={(t) => set({ day: t.replace(/\D/g, '').slice(0, 2) })} placeholder="ทุกวันที่ (1–31)" placeholderTextColor="#9ca3af" keyboardType="number-pad" style={[styles.input, { flex: 1, minWidth: 0 }]} />
-          <TextInput value={form.amount} onChangeText={(t) => set({ amount: t.replace(/[^0-9.,]/g, '') })} placeholder="จำนวนเงิน" placeholderTextColor="#9ca3af" keyboardType="decimal-pad" style={[styles.input, { flex: 1.3, minWidth: 0 }]} />
+          <TextInput value={form.day} onChangeText={(v) => set({ day: v.replace(/\D/g, '').slice(0, 2) })} placeholder={t('recurring.dayPh')} placeholderTextColor="#9ca3af" keyboardType="number-pad" style={[styles.input, { flex: 1, minWidth: 0 }]} />
+          <TextInput value={form.amount} onChangeText={(v) => set({ amount: v.replace(/[^0-9.,]/g, '') })} placeholder={t('form.amount')} placeholderTextColor="#9ca3af" keyboardType="decimal-pad" style={[styles.input, { flex: 1.3, minWidth: 0 }]} />
         </View>
-        <TextInput value={form.note} onChangeText={(t) => set({ note: t })} placeholder="ชื่อ/รายละเอียด เช่น ค่าเน็ต, เงินเดือน" placeholderTextColor="#9ca3af" style={styles.input} />
-        <Text style={styles.hint}>สร้างรายการอัตโนมัติทุกเดือนในวันนั้น (เดือนที่สั้นกว่าจะใช้วันสุดท้าย) เริ่มตั้งแต่วันนี้เป็นต้นไป</Text>
+        <TextInput value={form.note} onChangeText={(v) => set({ note: v })} placeholder={t('recurring.notePh')} placeholderTextColor="#9ca3af" style={styles.input} />
+        <Text style={styles.hint}>{t('recurring.hint')}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {!!editId && <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => { setEditId(null); setForm((f) => ({ ...EMPTY, categoryId: f.categoryId, accountId: f.accountId })); }} />}
-          <Button title={saving ? 'กำลังบันทึก...' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={saving} />
+          {!!editId && <Button title={t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={() => { setEditId(null); setForm((f) => ({ ...EMPTY, categoryId: f.categoryId, accountId: f.accountId })); }} />}
+          <Button title={saving ? t('common.saving') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={saving} />
         </View>
       </Card>
 
-      {rules.length === 0 && <Text style={[styles.hint, { textAlign: 'center' }]}>ยังไม่มีรายการประจำ</Text>}
+      {rules.length === 0 && <Text style={[styles.hint, { textAlign: 'center' }]}>{t('recurring.empty')}</Text>}
       {rules.map((r, i) => (
         <FadeIn key={r.id} delay={i * 50}>
           <PressScale onPress={() => edit(r)} scaleTo={0.98} style={[styles.row, !r.active && { opacity: 0.55 }]}>
             <IconBubble icon={CATEGORY_ICONS[r.category_code]} tint={CATEGORY_TINTS[r.category_code]} />
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.name} numberOfLines={1}>{r.note || r.subcategory_name || r.category_name}</Text>
-              <Text style={styles.hint} numberOfLines={1}>ทุกวันที่ {r.day} · {r.account_label}</Text>
-              <Text style={styles.hint}>{r.active ? `ครั้งต่อไป ${dateLabel(r.next_date)}` : 'หยุดไว้'}</Text>
+              <Text style={styles.name} numberOfLines={1}>{r.note || r.subcategory_name || tCode('category', r.category_code, r.category_name)}</Text>
+              <Text style={styles.hint} numberOfLines={1}>{t('recurring.every', { day: r.day, account: labelOf(r.account_id, r.account_label) })}</Text>
+              <Text style={styles.hint}>{r.active ? t('recurring.next', { date: dateLabel(r.next_date) }) : t('recurring.paused')}</Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 6 }}>
               <Text style={{ fontWeight: '800', color: CATEGORY_COLORS[r.category_code] }}>{money(r.amount)}</Text>
               <View style={{ flexDirection: 'row', gap: 6 }}>
-                <PressScale onPress={() => toggle(r)} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel={r.active ? 'หยุด' : 'เปิดใช้'}>
+                <PressScale onPress={() => toggle(r)} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel={r.active ? t('recurring.pause') : t('recurring.resume')}>
                   <Text style={{ fontSize: 12 }}>{r.active ? '⏸️' : '▶️'}</Text>
                 </PressScale>
-                <PressScale onPress={() => remove(r)} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel="ลบ">
+                <PressScale onPress={() => remove(r)} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel={t('common.delete')}>
                   <Text style={{ fontSize: 12 }}>🗑️</Text>
                 </PressScale>
               </View>

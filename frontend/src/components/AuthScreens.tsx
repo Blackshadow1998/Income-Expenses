@@ -6,6 +6,7 @@ import { COLORS } from '../format';
 import { PinPad } from './PinPad';
 import { VAULT } from './VaultDial';
 import { Button, Card, ErrorBox, Loading } from './ui';
+import { t } from '../i18n';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -39,9 +40,9 @@ export function NewPasswordScreen() {
 
   const save = async () => {
     setError(null);
-    if (next.length < 8) return setError('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
-    if (next !== next2) return setError('รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');
-    if (next === current) return setError('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสสำรอง');
+    if (next.length < 8) return setError(t('auth.pwTooShort'));
+    if (next !== next2) return setError(t('auth.pwMismatch'));
+    if (next === current) return setError(t('auth.pwSameAsTemp'));
     setBusy(true);
     try {
       await replaceTempPassword(current, next);
@@ -54,16 +55,16 @@ export function NewPasswordScreen() {
   return (
     <View style={styles.newPassword}>
       <Text style={{ fontSize: 40, textAlign: 'center' }}>🔑</Text>
-      <Text style={styles.title}>ตั้งรหัสผ่านใหม่</Text>
-      <Text style={styles.sub}>คุณเข้าสู่ระบบด้วยรหัสผ่านสำรอง ต้องตั้งรหัสผ่านใหม่ก่อนใช้งาน</Text>
+      <Text style={styles.title}>{t('auth.newPwTitle')}</Text>
+      <Text style={styles.sub}>{t('auth.newPwSub')}</Text>
       <Card style={{ gap: 10 }}>
-        {!tempPassword && <PasswordInput placeholder="รหัสผ่านสำรอง" value={current} onChangeText={setCurrent} />}
-        <PasswordInput placeholder="รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)" value={next} onChangeText={setNext} />
-        <PasswordInput placeholder="ยืนยันรหัสผ่านใหม่" value={next2} onChangeText={setNext2} onSubmitEditing={save} />
+        {!tempPassword && <PasswordInput placeholder={t('auth.tempPw')} value={current} onChangeText={setCurrent} />}
+        <PasswordInput placeholder={t('auth.newPw')} value={next} onChangeText={setNext} />
+        <PasswordInput placeholder={t('auth.newPw2')} value={next2} onChangeText={setNext2} onSubmitEditing={save} />
         {!!error && <Text style={{ color: COLORS.out }}>{error}</Text>}
-        <Button title={busy ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'} onPress={save} disabled={busy} />
+        <Button title={busy ? t('common.saving') : t('auth.saveNewPw')} onPress={save} disabled={busy} />
       </Card>
-      <FooterLink title="ออกจากระบบ" onPress={signOut} />
+      <FooterLink title={t('common.signOut')} onPress={signOut} />
     </View>
   );
 }
@@ -96,7 +97,7 @@ export function PinSetupScreen() {
     }
     if (pin !== first) {
       setFirst(null);
-      setError('PIN สองครั้งไม่ตรงกัน กรุณาตั้งใหม่');
+      setError(t('pin.mismatch'));
       return;
     }
     setBusy(true);
@@ -111,12 +112,12 @@ export function PinSetupScreen() {
 
   return (
     <PinPad
-      title={first === null ? 'ตั้ง PIN 6 หลัก' : 'ยืนยัน PIN อีกครั้ง'}
-      subtitle={first === null ? `${user?.name ?? ''} — ใช้ PIN นี้ปลดล็อกแอปเมื่อเปิดใหม่หรือไม่ได้ใช้ 5 นาที` : undefined}
+      title={first === null ? t('pin.setTitle') : t('pin.confirmTitle')}
+      subtitle={first === null ? t('pin.setSub', { name: user?.name ?? '' }) : undefined}
       error={error}
       busy={busy}
       onComplete={onComplete}
-      footer={<FooterLink title="ออกจากระบบ" onPress={signOut} />}
+      footer={<FooterLink title={t('common.signOut')} onPress={signOut} />}
     />
   );
 }
@@ -147,13 +148,13 @@ export function PinLockScreen() {
 
   return (
     <PinPad
-      title="ใส่ PIN เพื่อปลดล็อก"
-      subtitle={user ? `สวัสดี ${user.name}` : undefined}
+      title={t('pin.unlockTitle')}
+      subtitle={user ? t('pin.hello', { name: user.name }) : undefined}
       error={error}
       busy={busy}
       granted={granted}
       onComplete={onComplete}
-      footer={<FooterLink title="ลืม PIN? เข้าสู่ระบบด้วยรหัสผ่าน" onPress={forgotPin} />}
+      footer={<FooterLink title={t('pin.forgot')} onPress={forgotPin} />}
     />
   );
 }

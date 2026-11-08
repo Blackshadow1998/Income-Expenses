@@ -2,6 +2,7 @@ import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { api, Slip } from '../api';
 import { COLORS, dateLabel, money } from '../format';
 import { Button } from './ui';
+import { t } from '../i18n';
 
 /** Amber card for a bank slip that was read but not confirmed yet (not counted in balances). */
 export function PendingSlipCard({
@@ -16,13 +17,13 @@ export function PendingSlipCard({
   const imageUrl = api.slipImageUrl(slip);
   return (
     <View style={styles.card}>
-      <Pressable onPress={() => Linking.openURL(imageUrl)} accessibilityLabel="ดูรูปสลิป">
+      <Pressable onPress={() => Linking.openURL(imageUrl)} accessibilityLabel={t('slip.viewImage')}>
         <Image source={{ uri: imageUrl }} style={styles.thumb} resizeMode="cover" />
       </Pressable>
       <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>รอคอนเฟิร์ม</Text>
+            <Text style={styles.badgeText}>{t('slip.pending')}</Text>
           </View>
           {!!slip.suggestion && (
             <View style={styles.rule}>
@@ -33,15 +34,15 @@ export function PendingSlipCard({
           )}
           <Text style={{ color: COLORS.muted }}>
             {dateLabel(slip.date)}
-            {!slip.date_found && ' (อ่านวันที่ไม่ได้)'}
+            {!slip.date_found && t('slip.noDate')}
           </Text>
         </View>
         <Text style={styles.line} numberOfLines={1}>
-          <Text style={styles.label}>จาก </Text>
+          <Text style={styles.label}>{t('slip.from')}</Text>
           {slip.from_name || '-'}
         </Text>
         <Text style={styles.line} numberOfLines={1}>
-          <Text style={styles.label}>ถึง </Text>
+          <Text style={styles.label}>{t('slip.to')}</Text>
           {slip.to_name || '-'}
         </Text>
         {!!(slip.bank_name || slip.to_bank_name) && (
@@ -52,10 +53,10 @@ export function PendingSlipCard({
         )}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
-        <Text style={styles.amount}>{slip.amount > 0 ? money(slip.amount) : 'ไม่พบจำนวนเงิน'}</Text>
+        <Text style={styles.amount}>{slip.amount > 0 ? money(slip.amount) : t('slip.noAmount')}</Text>
         <View style={{ flexDirection: 'row', gap: 6 }}>
-          <Button title="คอนเฟิร์ม" small onPress={onConfirm} />
-          <Button title="ลบ" variant="danger" small onPress={onDelete} />
+          <Button title={t('slip.confirm')} small onPress={onConfirm} />
+          <Button title={t('common.delete')} variant="danger" small onPress={onDelete} />
         </View>
       </View>
     </View>

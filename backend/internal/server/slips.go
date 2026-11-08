@@ -143,6 +143,9 @@ func (a *API) uploadSlips(w http.ResponseWriter, r *http.Request) {
 		}
 		results = append(results, res)
 	}
+	for i := range results { // per-file errors are not the answer's top-level "error"
+		results[i].Error = httpx.Translate(w, results[i].Error)
+	}
 	httpx.WriteJSON(w, http.StatusOK, results)
 }
 

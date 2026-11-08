@@ -7,11 +7,12 @@ import { GoogleButton } from '@/components/GoogleButton';
 import { FadeIn, PressScale } from '@/components/motion';
 import { Button, Card } from '@/components/ui';
 import { COLORS, confirmAsync, currentMonth, setThemePref, showError, showInfo, THEME_PREF, ThemePref } from '@/format';
+import { Lang, LANG, setLang, t } from '@/i18n';
 
 const EXPORTS: { label: string; range: () => [string, string] }[] = [
-  { label: 'เดือนนี้', range: () => [`${currentMonth()}-01`, ''] },
-  { label: 'ปีนี้', range: () => [`${new Date().getFullYear()}-01-01`, ''] },
-  { label: 'ทั้งหมด', range: () => ['', ''] },
+  { label: t('settings.exportThisMonth'), range: () => [`${currentMonth()}-01`, ''] },
+  { label: t('settings.exportThisYear'), range: () => [`${new Date().getFullYear()}-01-01`, ''] },
+  { label: t('settings.exportAll'), range: () => ['', ''] },
 ];
 
 const exportCsv = async ([from, to]: [string, string]) => {
@@ -37,7 +38,7 @@ function RecoveryEmail() {
       await refreshUser();
       setEditing(false);
       setPassword('');
-      showInfo('บันทึกอีเมลแล้ว', 'ถ้าลืมรหัสผ่าน รหัสยืนยันจะถูกส่งไปที่อีเมลนี้');
+      showInfo(t('settings.emailSavedTitle'), t('settings.emailSavedBody'));
     } catch (e) {
       showError(e);
     } finally {
@@ -47,11 +48,11 @@ function RecoveryEmail() {
 
   return (
     <Card style={{ gap: 10 }}>
-      <Text style={styles.h2}>✉️ อีเมลสำหรับกู้รหัสผ่าน</Text>
+      <Text style={styles.h2}>{t('settings.recoveryEmail')}</Text>
       {user?.email ? (
         <Text style={{ color: COLORS.text }}>{user.email}</Text>
       ) : (
-        <Text style={{ color: COLORS.out }}>ยังไม่ได้ตั้งอีเมล — ถ้าลืมรหัสผ่านจะขอรหัสยืนยันไม่ได้</Text>
+        <Text style={{ color: COLORS.out }}>{t('settings.noEmail')}</Text>
       )}
       {editing ? (
         <>
@@ -67,7 +68,7 @@ function RecoveryEmail() {
           <TextInput
             value={password}
             onChangeText={setPassword}
-            placeholder="รหัสผ่านปัจจุบัน (ยืนยันว่าเป็นคุณ)"
+            placeholder={t('settings.currentPassword')}
             placeholderTextColor={COLORS.muted}
             secureTextEntry
             autoCapitalize="none"
@@ -75,12 +76,12 @@ function RecoveryEmail() {
             style={styles.input}
           />
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => setEditing(false)} />
-            <Button title={busy ? 'กำลังบันทึก...' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={busy} />
+            <Button title={t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={() => setEditing(false)} />
+            <Button title={busy ? t('common.saving') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={busy} />
           </View>
         </>
       ) : (
-        <Button title={user?.email ? 'เปลี่ยนอีเมล' : 'ตั้งอีเมล'} variant="outline" onPress={() => setEditing(true)} />
+        <Button title={user?.email ? t('settings.changeEmail') : t('settings.setEmail')} variant="outline" onPress={() => setEditing(true)} />
       )}
     </Card>
   );
@@ -115,16 +116,21 @@ function Collapsible({ title, hint, children }: { title: string; hint: string; c
 }
 
 const THEMES: { key: ThemePref; label: string }[] = [
-  { key: 'system', label: '📱 ตามเครื่อง' },
-  { key: 'light', label: '☀️ สว่าง' },
-  { key: 'dark', label: '🌙 มืด' },
+  { key: 'system', label: t('settings.themeSystem') },
+  { key: 'light', label: t('settings.themeLight') },
+  { key: 'dark', label: t('settings.themeDark') },
+];
+
+const LANGS: { key: Lang; label: string }[] = [
+  { key: 'th', label: t('lang.th') },
+  { key: 'en', label: t('lang.en') },
 ];
 
 export default function SettingsScreen() {
   const { user, lockNow, signOut } = useAuth();
 
   const onSignOut = async () => {
-    if (await confirmAsync('ออกจากระบบ', 'ต้องการออกจากระบบใช่หรือไม่?', 'ออกจากระบบ')) await signOut();
+    if (await confirmAsync(t('settings.signOut'), t('settings.signOutConfirm'), t('settings.signOut'))) await signOut();
   };
 
   return (
@@ -139,16 +145,16 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
-      <Collapsible title="📂 ข้อมูล" hint="รายการ · งบประมาณ · รายการประจำ · เงื่อนไขสลิป · หนี้">
-        <Button title="📋 จัดการรายการ (หมวดย่อย)" variant="outline" onPress={() => router.push('/subcategories')} />
-        <Button title="🎯 งบประมาณรายเดือน" variant="outline" onPress={() => router.push('/budgets')} />
-        <Button title="🔁 รายการประจำ" variant="outline" onPress={() => router.push('/recurring')} />
-        <Button title="🧠 เงื่อนไขสลิป (ค่าหอ, โอนให้ตัวเอง...)" variant="outline" onPress={() => router.push('/slip-rules')} />
-        <Button title="🤝 หนี้ ให้ยืม / กู้" variant="outline" onPress={() => router.push('/debts')} />
+      <Collapsible title={t('settings.data')} hint={t('settings.dataHint')}>
+        <Button title={t('settings.subcategories')} variant="outline" onPress={() => router.push('/subcategories')} />
+        <Button title={t('settings.budgets')} variant="outline" onPress={() => router.push('/budgets')} />
+        <Button title={t('settings.recurring')} variant="outline" onPress={() => router.push('/recurring')} />
+        <Button title={t('settings.slipRules')} variant="outline" onPress={() => router.push('/slip-rules')} />
+        <Button title={t('settings.debts')} variant="outline" onPress={() => router.push('/debts')} />
       </Collapsible>
 
       <Card style={{ gap: 10 }}>
-        <Text style={styles.h2}>📤 ส่งออก Excel / CSV</Text>
+        <Text style={styles.h2}>{t('settings.export')}</Text>
         {Platform.OS === 'web' ? (
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {EXPORTS.map((e) => (
@@ -156,21 +162,37 @@ export default function SettingsScreen() {
             ))}
           </View>
         ) : (
-          <Text style={{ color: COLORS.muted, fontSize: 13 }}>ส่งออกได้จากหน้าเว็บ (เปิดผ่านเบราว์เซอร์)</Text>
+          <Text style={{ color: COLORS.muted, fontSize: 13 }}>{t('settings.exportWebOnly')}</Text>
         )}
       </Card>
 
       <Card style={{ gap: 10 }}>
-        <Text style={styles.h2}>ธีม</Text>
+        <Text style={styles.h2}>{t('settings.theme')}</Text>
         <View style={styles.segment}>
-          {THEMES.map((t) => (
+          {THEMES.map((o) => (
             <PressScale
-              key={t.key}
-              onPress={() => t.key !== THEME_PREF && setThemePref(t.key)}
+              key={o.key}
+              onPress={() => o.key !== THEME_PREF && setThemePref(o.key)}
               containerStyle={{ flex: 1 }}
-              style={[styles.segBtn, THEME_PREF === t.key && styles.segBtnActive]}
+              style={[styles.segBtn, THEME_PREF === o.key && styles.segBtnActive]}
             >
-              <Text style={[styles.segText, THEME_PREF === t.key && { color: COLORS.primary }]}>{t.label}</Text>
+              <Text style={[styles.segText, THEME_PREF === o.key && { color: COLORS.primary }]}>{o.label}</Text>
+            </PressScale>
+          ))}
+        </View>
+      </Card>
+
+      <Card style={{ gap: 10 }}>
+        <Text style={styles.h2}>{t('lang.title')}</Text>
+        <View style={styles.segment}>
+          {LANGS.map((o) => (
+            <PressScale
+              key={o.key}
+              onPress={() => o.key !== LANG && setLang(o.key)}
+              containerStyle={{ flex: 1 }}
+              style={[styles.segBtn, LANG === o.key && styles.segBtnActive]}
+            >
+              <Text style={[styles.segText, LANG === o.key && { color: COLORS.primary }]}>{o.label}</Text>
             </PressScale>
           ))}
         </View>
@@ -178,19 +200,19 @@ export default function SettingsScreen() {
 
       <RecoveryEmail />
 
-      <Collapsible title="🛡️ ความปลอดภัย" hint="ล็อก · เปลี่ยน PIN · เปลี่ยนรหัสผ่าน · Google">
+      <Collapsible title={t('settings.security')} hint={t('settings.securityHint')}>
         <Text style={{ color: COLORS.muted, fontSize: 13 }}>
-          แอปจะล็อกและถาม PIN เมื่อเปิดใหม่ หรือไม่ได้ใช้งาน 5 นาที
+          {t('settings.lockInfo')}
         </Text>
-        <Button title="🔒 ล็อกตอนนี้" variant="outline" onPress={lockNow} />
-        <Button title="เปลี่ยน PIN" variant="outline" onPress={() => router.push('/change-pin')} />
-        <Button title="เปลี่ยนรหัสผ่าน" variant="outline" onPress={() => router.push('/change-password')} />
+        <Button title={t('settings.lockNow')} variant="outline" onPress={lockNow} />
+        <Button title={t('settings.changePin')} variant="outline" onPress={() => router.push('/change-pin')} />
+        <Button title={t('settings.changePassword')} variant="outline" onPress={() => router.push('/change-password')} />
         <GoogleButton
           text="continue_with"
           onCredential={async (credential) => {
             try {
               await api.auth.linkGoogle(credential);
-              showInfo('เชื่อมบัญชี Google แล้ว', 'ครั้งต่อไปกด "ลงชื่อเข้าใช้ด้วย Google" ที่หน้าเข้าสู่ระบบได้เลย');
+              showInfo(t('settings.googleLinkedTitle'), t('settings.googleLinkedBody'));
             } catch (e) {
               showError(e);
             }
@@ -198,7 +220,7 @@ export default function SettingsScreen() {
         />
       </Collapsible>
 
-      <Button title="ออกจากระบบ" variant="danger" onPress={onSignOut} />
+      <Button title={t('settings.signOut')} variant="danger" onPress={onSignOut} />
     </ScrollView>
   );
 }

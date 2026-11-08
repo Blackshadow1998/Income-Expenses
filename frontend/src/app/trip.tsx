@@ -5,19 +5,20 @@ import { api, Trip, TripBill, TripPair, TripPayment, TripSummary } from '@/api';
 import { FadeIn, GrowBar, PressScale } from '@/components/motion';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, confirmAsync, dateLabel, money, showError, showInfo } from '@/format';
+import { t } from '@/i18n';
 import { summaryText } from '@/tripSplit';
 
 type Tab = 'bills' | 'summary' | 'payments';
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'bills', label: '🧾 บิล' },
-  { key: 'summary', label: '📊 สรุปยอด' },
-  { key: 'payments', label: '💸 การจ่ายเงิน' },
+  { key: 'bills', label: t('trip.tabBills') },
+  { key: 'summary', label: t('trip.tabSummary') },
+  { key: 'payments', label: t('trip.tabPayments') },
 ];
-const MODE_LABEL: Record<TripBill['split_mode'], string> = { equal: 'หารเท่ากัน', amount: 'ระบุจำนวน', ratio: 'ตามสัดส่วน' };
+const MODE_LABEL: Record<TripBill['split_mode'], string> = { equal: t('trip.modeEqual'), amount: t('trip.modeAmount'), ratio: t('trip.modeRatio') };
 const STATUS: Record<TripPair['status'], { label: string; color: string }> = {
-  unpaid: { label: 'ยังไม่จ่าย', color: COLORS.out },
-  partial: { label: 'จ่ายบางส่วน', color: COLORS.pending },
-  paid: { label: 'จ่ายครบ', color: COLORS.in },
+  unpaid: { label: t('trip.unpaid'), color: COLORS.out },
+  partial: { label: t('trip.partial'), color: COLORS.pending },
+  paid: { label: t('trip.paid'), color: COLORS.in },
 };
 
 /** One trip: members on top, then three tabs — bills, who owes whom, and payments made. */
@@ -46,8 +47,8 @@ export default function TripScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [t, s] = await Promise.all([api.trip(id), api.tripSummary(id, mode)]);
-      setTrip(t);
+      const [loaded, s] = await Promise.all([api.trip(id), api.tripSummary(id, mode)]);
+      setTrip(loaded);
       setSummary(s);
     } catch (e) {
       setError((e as Error).message);
@@ -83,16 +84,16 @@ export default function TripScreen() {
   };
 
   const removeMember = async (memberId: number, name: string) => {
-    if (await confirmAsync('ลบสมาชิก', `ต้องการลบ "${name}" ออกจากทริปใช่หรือไม่?`)) run(() => api.removeTripMember(id, memberId));
+    if (await confirmAsync(t('trip.removeMemberTitle'), t('trip.removeMemberBody', { name }))) run(() => api.removeTripMember(id, memberId));
   };
 
   const copySummary = async () => {
     if (!trip || !summary) return;
-    const text = summaryText(trip.name, summary);
+    const text = summaryText(trip.name, summary, t);
     try {
       if (Platform.OS === 'web' && navigator.clipboard) {
         await navigator.clipboard.writeText(text);
-        showInfo('คัดลอกแล้ว', 'วางในกลุ่มไลน์ได้เลย');
+        showInfo(t('trip.copiedTitle'), t('trip.copiedBody'));
       } else {
         await Share.share({ message: text });
       }
@@ -102,7 +103,7 @@ export default function TripScreen() {
   };
 
   const removeTrip = async () => {
-    if (!trip || !(await confirmAsync('ลบทริป', `ต้องการลบทริป "${trip.name}" พร้อมบิลและการจ่ายทั้งหมดใช่หรือไม่?`))) return;
+    if (!trip || !(await confirmAsync(t('trip.deleteTitle'), t('trip.deleteBody', { name: trip.name })))) return;
     try {
       await api.removeTrip(id);
       router.back();
@@ -123,20 +124,20 @@ export default function TripScreen() {
         {renaming !== null ? (
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TextInput value={renaming} onChangeText={setRenaming} maxLength={60} style={[styles.input, { flex: 1 }]} />
-            <Button title="บันทึก" small onPress={() => { const n = renaming.trim(); setRenaming(null); if (n) run(() => api.renameTrip(id, n)); }} />
+            <Button title={t('common.save')} small onPress={() => { const n = renaming.trim(); setRenaming(null); if (n) run(() => api.renameTrip(id, n)); }} />
           </View>
         ) : (
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
               <Text style={styles.h2}>{trip.name}</Text>
-              <Text style={styles.hint}>ยอดรวม {money(trip.total)} บาท · {trip.bills.length} บิล</Text>
+              <Text style={styles.hint}>{t('trip.totalLine', { amount: money(trip.total), bills: trip.bills.length })}</Text>
             </View>
-            <PressScale onPress={() => setRenaming(trip.name)} style={styles.iconBtn} accessibilityLabel="แก้ชื่อทริป">
+            <PressScale onPress={() => setRenaming(trip.name)} style={styles.iconBtn} accessibilityLabel={t('trip.rename')}>
               <Text>✏️</Text>
             </PressScale>
           </View>
         )}
-        <Text style={styles.label}>สมาชิก ({trip.members.length}) — แตะชื่อเพื่อลบ</Text>
+        <Text style={styles.label}>{t('trip.members', { n: trip.members.length })}</Text>
         <View style={styles.chips}>
           {trip.members.map((m) => (
             <PressScale key={m.id} onPress={() => removeMember(m.id, m.name)} style={styles.member}>
@@ -150,18 +151,18 @@ export default function TripScreen() {
             onChangeText={setNewMember}
             onSubmitEditing={addMember}
             maxLength={40}
-            placeholder="เพิ่มสมาชิก"
+            placeholder={t('trip.addMemberPh')}
             placeholderTextColor={COLORS.muted}
             style={[styles.input, { flex: 1 }]}
           />
-          <Button title="เพิ่ม" variant="soft" onPress={addMember} />
+          <Button title={t('month.add')} variant="soft" onPress={addMember} />
         </View>
       </Card>
 
       <View style={styles.segment}>
-        {TABS.map((t) => (
-          <PressScale key={t.key} onPress={() => setTab(t.key)} containerStyle={{ flex: 1 }} style={[styles.segBtn, tab === t.key && styles.segOn]}>
-            <Text style={[styles.segText, tab === t.key && { color: COLORS.primary }]}>{t.label}</Text>
+        {TABS.map((tb) => (
+          <PressScale key={tb.key} onPress={() => setTab(tb.key)} containerStyle={{ flex: 1 }} style={[styles.segBtn, tab === tb.key && styles.segOn]}>
+            <Text style={[styles.segText, tab === tb.key && { color: COLORS.primary }]}>{tb.label}</Text>
           </PressScale>
         ))}
       </View>
@@ -176,25 +177,25 @@ export default function TripScreen() {
           names={names}
           onConfirm={(p) => run(() => api.updateTripPayment(p.id, { confirmed: !p.confirmed }))}
           onDelete={async (p) => {
-            if (await confirmAsync('ยกเลิกการจ่าย', `ลบรายการ ${names[p.from_member]} → ${names[p.to_member]} ${money(p.amount)} บาท ใช่หรือไม่?`))
+            if (await confirmAsync(t('trip.cancelPaymentTitle'), t('trip.cancelPaymentBody', { from: names[p.from_member], to: names[p.to_member], amount: money(p.amount) })))
               run(() => api.removeTripPayment(p.id));
           }}
         />
       )}
 
-      <Button title="ลบทริปนี้" variant="danger" onPress={removeTrip} style={{ marginTop: 12 }} />
+      <Button title={t('trip.delete')} variant="danger" onPress={removeTrip} style={{ marginTop: 12 }} />
     </ScrollView>
   );
 }
 
 function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number, string>; onDelete: (b: TripBill) => void }) {
   const remove = async (b: TripBill) => {
-    if (await confirmAsync('ลบบิล', `ต้องการลบบิล "${b.title}" ${money(b.amount)} บาท ใช่หรือไม่?`)) onDelete(b);
+    if (await confirmAsync(t('trip.deleteBillTitle'), t('trip.deleteBillBody', { title: b.title, amount: money(b.amount) }))) onDelete(b);
   };
   return (
     <View style={{ gap: 10 }}>
       <Button
-        title="เพิ่มบิล"
+        title={t('trip.addBill')}
         icon="＋"
         disabled={trip.members.length < 2}
         onPress={() => router.push({ pathname: '/trip-bill', params: { tripId: String(trip.id) } })}
@@ -202,7 +203,7 @@ function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number,
       {trip.bills.length === 0 ? (
         <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 26 }}>
           <Text style={{ fontSize: 34 }}>🧾</Text>
-          <Text style={{ color: COLORS.muted }}>{trip.members.length < 2 ? 'เพิ่มสมาชิกอย่างน้อย 2 คนก่อน' : 'ยังไม่มีบิล'}</Text>
+          <Text style={{ color: COLORS.muted }}>{trip.members.length < 2 ? t('trip.needMembers') : t('trip.noBills')}</Text>
         </Card>
       ) : (
         trip.bills.map((b, i) => (
@@ -213,14 +214,14 @@ function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number,
               style={styles.row}
             >
               {!!b.image_url && (
-                <PressScale onPress={() => Linking.openURL(api.tripBillImageUrl(b))} accessibilityLabel="ดูรูปบิล">
+                <PressScale onPress={() => Linking.openURL(api.tripBillImageUrl(b))} accessibilityLabel={t('trip.viewBill')}>
                   <Image source={{ uri: api.tripBillImageUrl(b) }} style={styles.thumb} />
                 </PressScale>
               )}
               <View style={{ flex: 1, gap: 3 }}>
                 <Text style={styles.name} numberOfLines={1}>{b.title}</Text>
                 <Text style={styles.hint}>
-                  {dateLabel(b.date)} · {names[b.payer_id]} จ่าย · หาร {b.parts.length} คน ({MODE_LABEL[b.split_mode]})
+                  {t('trip.billLine', { date: dateLabel(b.date), payer: names[b.payer_id], n: b.parts.length, mode: MODE_LABEL[b.split_mode] })}
                 </Text>
                 <Text style={styles.hint} numberOfLines={2}>
                   {b.parts.map((p) => `${names[p.member_id]} ${money(p.share)}`).join(' · ')}
@@ -228,7 +229,7 @@ function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number,
               </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}>
                 <Text style={styles.amount}>{money(b.amount)}</Text>
-                <PressScale onPress={() => remove(b)} hitSlop={6} scaleTo={0.85} style={styles.trash} accessibilityLabel="ลบบิล">
+                <PressScale onPress={() => remove(b)} hitSlop={6} scaleTo={0.85} style={styles.trash} accessibilityLabel={t('trip.deleteBillTitle')}>
                   <Text style={{ fontSize: 12 }}>🗑️</Text>
                 </PressScale>
               </View>
@@ -253,7 +254,7 @@ function SummaryTab({ tripId, summary, mode, onMode, onCopy, hasBills }: {
     return (
       <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 26 }}>
         <Text style={{ fontSize: 34 }}>📊</Text>
-        <Text style={{ color: COLORS.muted }}>ลงบิลก่อน แล้วสรุปยอดจะขึ้นที่นี่</Text>
+        <Text style={{ color: COLORS.muted }}>{t('trip.summaryEmpty')}</Text>
       </Card>
     );
   const { owed, paid } = summary.progress;
@@ -268,14 +269,14 @@ function SummaryTab({ tripId, summary, mode, onMode, onCopy, hasBills }: {
       <View style={styles.segment}>
         {(['pairwise', 'minimal'] as const).map((m) => (
           <PressScale key={m} onPress={() => m !== mode && onMode(m)} containerStyle={{ flex: 1 }} style={[styles.segBtn, mode === m && styles.segOn]}>
-            <Text style={[styles.segText, mode === m && { color: COLORS.primary }]}>{m === 'pairwise' ? 'รายคู่' : 'ลดจำนวนการโอน'}</Text>
+            <Text style={[styles.segText, mode === m && { color: COLORS.primary }]}>{m === 'pairwise' ? t('trip.pairwise') : t('trip.minimal')}</Text>
           </PressScale>
         ))}
       </View>
 
       <Card style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={styles.h3}>เก็บเงินแล้ว</Text>
+          <Text style={styles.h3}>{t('trip.collected')}</Text>
           <Text style={styles.h3}>
             {money(paid)} / {money(owed)}
           </Text>
@@ -283,13 +284,13 @@ function SummaryTab({ tripId, summary, mode, onMode, onCopy, hasBills }: {
         <View style={styles.track}>
           <GrowBar fraction={owed > 0 ? Math.min(paid / owed, 1) : 1} color={COLORS.in} style={{ height: '100%' }} />
         </View>
-        <Button title="คัดลอกสรุป (ส่งไลน์)" icon="📋" variant="soft" onPress={onCopy} />
+        <Button title={t('trip.copy')} icon="📋" variant="soft" onPress={onCopy} />
       </Card>
 
-      <Text style={styles.label}>{mode === 'pairwise' ? 'หนี้แต่ละคู่ (หักลบกันแล้ว)' : 'โอนแค่นี้ก็เคลียร์กันหมด'}</Text>
+      <Text style={styles.label}>{mode === 'pairwise' ? t('trip.pairsLabel') : t('trip.minimalLabel')}</Text>
       {list.length === 0 ? (
         <Card style={{ alignItems: 'center', paddingVertical: 18 }}>
-          <Text style={{ color: COLORS.in, fontWeight: '800' }}>ทุกคนเคลียร์กันครบแล้ว 🎉</Text>
+          <Text style={{ color: COLORS.in, fontWeight: '800' }}>{t('trip.allSettled')}</Text>
         </Card>
       ) : (
         list.map((p, i) => (
@@ -306,26 +307,26 @@ function SummaryTab({ tripId, summary, mode, onMode, onCopy, hasBills }: {
                     </View>
                     {p.paid !== 0 && (
                       <Text style={styles.hint}>
-                        ทั้งหมด {money(p.owed)} · จ่ายแล้ว {money(p.paid)}
+                        {t('trip.owedPaid', { owed: money(p.owed), paid: money(p.paid) })}
                       </Text>
                     )}
                   </>
                 ) : (
-                  <Text style={styles.hint}>โอนตรงไปที่ {p.to_name}</Text>
+                  <Text style={styles.hint}>{t('trip.payDirect', { name: p.to_name })}</Text>
                 )}
               </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}>
                 <Text style={[styles.amount, { color: p.remaining > 0 ? COLORS.out : COLORS.in }]}>
                   {p.remaining > 0 ? money(p.remaining) : '✓'}
                 </Text>
-                {p.remaining > 0 && <Button title="จ่ายแล้ว" small onPress={() => pay(p)} />}
+                {p.remaining > 0 && <Button title={t('trip.markPaid')} small onPress={() => pay(p)} />}
               </View>
             </View>
           </FadeIn>
         ))
       )}
 
-      <Text style={styles.label}>ต่อคน</Text>
+      <Text style={styles.label}>{t('trip.perPerson')}</Text>
       <View style={styles.people}>
         {summary.people.map((p) => {
           const color = p.net > 0 ? COLORS.in : p.net < 0 ? COLORS.out : COLORS.muted;
@@ -338,15 +339,15 @@ function SummaryTab({ tripId, summary, mode, onMode, onCopy, hasBills }: {
                   {money(p.net)}
                 </Text>
               </View>
-              {p.net === 0 && <Text style={styles.hint}>เคลียร์แล้ว ✓</Text>}
+              {p.net === 0 && <Text style={styles.hint}>{t('trip.settled')}</Text>}
               {p.receive.map((r) => (
                 <Text key={`r${r.member_id}`} style={[styles.hint, { color: COLORS.in }]}>
-                  ต้องรับจาก {r.name} {money(r.amount)}
+                  {t('trip.receiveFrom', { name: r.name, amount: money(r.amount) })}
                 </Text>
               ))}
               {p.pay.map((r) => (
                 <Text key={`p${r.member_id}`} style={[styles.hint, { color: COLORS.out }]}>
-                  ต้องจ่ายให้ {r.name} {money(r.amount)}
+                  {t('trip.payTo', { name: r.name, amount: money(r.amount) })}
                 </Text>
               ))}
             </View>
@@ -367,7 +368,7 @@ function PaymentsTab({ trip, names, onConfirm, onDelete }: {
     return (
       <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 26 }}>
         <Text style={{ fontSize: 34 }}>💸</Text>
-        <Text style={{ color: COLORS.muted, textAlign: 'center' }}>ยังไม่มีการจ่ายเงิน{'\n'}กด &quot;จ่ายแล้ว&quot; ที่แท็บสรุปยอดเพื่อบันทึก</Text>
+        <Text style={{ color: COLORS.muted, textAlign: 'center' }}>{t('trip.noPayments')}</Text>
       </Card>
     );
   return (
@@ -376,7 +377,7 @@ function PaymentsTab({ trip, names, onConfirm, onDelete }: {
         <FadeIn key={p.id} delay={Math.min(i * 40, 300)}>
           <View style={styles.row}>
             {p.slip_url ? (
-              <PressScale onPress={() => Linking.openURL(api.tripSlipUrl(p))} accessibilityLabel="ดูสลิป">
+              <PressScale onPress={() => Linking.openURL(api.tripSlipUrl(p))} accessibilityLabel={t('trip.viewSlip')}>
                 <Image source={{ uri: api.tripSlipUrl(p) }} style={styles.thumb} />
               </PressScale>
             ) : (
@@ -393,25 +394,25 @@ function PaymentsTab({ trip, names, onConfirm, onDelete }: {
                 {p.note ? ` · ${p.note}` : ''}
               </Text>
               <Text style={[styles.hint, { color: p.confirmed ? COLORS.in : COLORS.pending, fontWeight: '700' }]}>
-                {p.confirmed ? '✓ ผู้รับยืนยันแล้ว' : 'รอผู้รับยืนยัน'}
+                {p.confirmed ? t('trip.confirmed') : t('trip.awaiting')}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 6 }}>
               <Text style={styles.amount}>{money(p.amount)}</Text>
               <View style={{ flexDirection: 'row', gap: 6 }}>
-                <PressScale onPress={() => onConfirm(p)} hitSlop={6} scaleTo={0.85} style={styles.smallBtn} accessibilityLabel={p.confirmed ? 'ยกเลิกยืนยัน' : 'ยืนยันว่าได้รับแล้ว'}>
-                  <Text style={styles.smallText}>{p.confirmed ? '↩︎' : '✓ ได้รับ'}</Text>
+                <PressScale onPress={() => onConfirm(p)} hitSlop={6} scaleTo={0.85} style={styles.smallBtn} accessibilityLabel={p.confirmed ? t('trip.unconfirm') : t('trip.confirm')}>
+                  <Text style={styles.smallText}>{p.confirmed ? '↩︎' : t('trip.received')}</Text>
                 </PressScale>
                 <PressScale
                   onPress={() => router.push({ pathname: '/trip-payment', params: { tripId: String(trip.id), id: String(p.id) } })}
                   hitSlop={6}
                   scaleTo={0.85}
                   style={styles.smallBtn}
-                  accessibilityLabel="แก้ไขการจ่าย"
+                  accessibilityLabel={t('trip.editPayment')}
                 >
                   <Text style={styles.smallText}>✏️</Text>
                 </PressScale>
-                <PressScale onPress={() => onDelete(p)} hitSlop={6} scaleTo={0.85} style={[styles.smallBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel="ยกเลิกการจ่าย">
+                <PressScale onPress={() => onDelete(p)} hitSlop={6} scaleTo={0.85} style={[styles.smallBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel={t('trip.cancelPaymentTitle')}>
                   <Text style={styles.smallText}>🗑️</Text>
                 </PressScale>
               </View>

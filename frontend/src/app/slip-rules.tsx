@@ -4,7 +4,8 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Account, api, Category, Option, SlipRule, SlipRuleInput } from '@/api';
 import { FadeIn, PressScale } from '@/components/motion';
 import { Button, Card, ErrorBox, IconBubble, Loading } from '@/components/ui';
-import { CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, showError } from '@/format';
+import { accountLabel, bankName, CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, showError } from '@/format';
+import { t, tCode } from '@/i18n';
 
 type Form = Omit<SlipRuleInput, 'bank_id' | 'category_id' | 'subcategory_id' | 'account_id' | 'to_account_id'> & {
   bank_id: number | null;
@@ -20,19 +21,26 @@ const EMPTY: Form = {
 };
 
 const KINDS: { kind: SlipRule['match_kind']; label: string }[] = [
-  { kind: 'to', label: 'ชื่อผู้รับมีคำว่า' },
-  { kind: 'from', label: 'ชื่อผู้โอนมีคำว่า' },
-  { kind: 'self', label: 'ผู้โอน = ผู้รับ (ตัวเอง)' },
+  { kind: 'to', label: t('rules.kindTo') },
+  { kind: 'from', label: t('rules.kindFrom') },
+  { kind: 'self', label: t('rules.kindSelf') },
 ];
 
 const condition = (r: SlipRule) =>
-  (r.match_kind === 'self' ? 'โอนให้ตัวเอง' : `${r.match_kind === 'to' ? 'ผู้รับ' : 'ผู้โอน'}มี "${r.match_text}"`) +
-  (r.bank_name ? ` · ปลายทาง ${r.bank_name}` : '');
+  (r.match_kind === 'self' ? t('rules.condSelf') : t(r.match_kind === 'to' ? 'rules.condTo' : 'rules.condFrom', { text: r.match_text })) +
+  (r.bank_name ? t('rules.condBank', { bank: bankName(r.bank_name) }) : '');
 
-const outcome = (r: SlipRule) =>
-  r.action === 'transfer'
-    ? `โอนระหว่างบัญชี → ${r.to_account_label || 'บัญชีที่ธนาคารปลายทาง'}`
-    : [r.category_name, r.subcategory_name, r.account_label].filter(Boolean).join(' · ');
+/** Category and account names come from the server in Thai: rebuild them from the lists when we have them. */
+const outcome = (r: SlipRule, categories: Category[], accounts: Account[]) => {
+  const label = (id: number | null, fallback: string) => {
+    const a = accounts.find((x) => x.id === id);
+    return a ? accountLabel(a) : fallback;
+  };
+  const c = categories.find((x) => x.id === r.category_id);
+  return r.action === 'transfer'
+    ? t('rules.outTransfer', { account: label(r.to_account_id, r.to_account_label) || t('rules.receivingBankAccount') })
+    : [c ? tCode('category', c.code, c.name) : r.category_name, r.subcategory_name, label(r.account_id, r.account_label)].filter(Boolean).join(' · ');
+};
 
 /** Slip rules: "when a scanned slip looks like this, prefill the confirm form like that". */
 export default function SlipRulesScreen() {
@@ -71,9 +79,9 @@ export default function SlipRulesScreen() {
   };
 
   const save = async () => {
-    if (!form.name.trim()) return showError(new Error('กรุณาตั้งชื่อเงื่อนไข เช่น ค่าหอ, ครอบครัว'));
-    if (form.match_kind !== 'self' && !form.match_text.trim()) return showError(new Error('กรุณาใส่คำที่ต้องเจอในชื่อ'));
-    if (form.action === 'transaction' && !form.category_id) return showError(new Error('กรุณาเลือกหมวด'));
+    if (!form.name.trim()) return showError(new Error(t('rules.nameError')));
+    if (form.match_kind !== 'self' && !form.match_text.trim()) return showError(new Error(t('rules.textError')));
+    if (form.action === 'transaction' && !form.category_id) return showError(new Error(t('rules.categoryError')));
     setSaving(true);
     try {
       await api.saveSlipRule(editId, {
@@ -111,7 +119,7 @@ export default function SlipRulesScreen() {
   };
 
   const remove = async (r: SlipRule) => {
-    if (!(await confirmAsync('ลบเงื่อนไข', `ต้องการลบ "${r.name}" ใช่หรือไม่?\nรายการที่บันทึกไปแล้วจะยังอยู่`))) return;
+    if (!(await confirmAsync(t('rules.deleteTitle'), t('rules.deleteBody', { name: r.name })))) return;
     try {
       await api.removeSlipRule(r.id);
       if (editId === r.id) reset();
@@ -128,7 +136,7 @@ export default function SlipRulesScreen() {
     <View style={styles.pickerWrap}>
       <Picker selectedValue={value ?? 0} onValueChange={(v) => onChange(Number(v) || null)} style={styles.picker}>
         <Picker.Item label={emptyLabel} value={0} />
-        {accounts.map((a) => <Picker.Item key={a.id} label={a.label} value={a.id} />)}
+        {accounts.map((a) => <Picker.Item key={a.id} label={accountLabel(a)} value={a.id} />)}
       </Picker>
     </View>
   );
@@ -136,10 +144,10 @@ export default function SlipRulesScreen() {
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Card style={{ gap: 12 }}>
-        <Text style={styles.h2}>{editId ? 'แก้ไขเงื่อนไข' : 'เพิ่มเงื่อนไข'}</Text>
-        <TextInput value={form.name} onChangeText={(t) => set({ name: t })} maxLength={40} placeholder="ชื่อเงื่อนไข เช่น ค่าหอ, ครอบครัว" placeholderTextColor="#9ca3af" style={styles.input} />
+        <Text style={styles.h2}>{editId ? t('rules.edit') : t('rules.add')}</Text>
+        <TextInput value={form.name} onChangeText={(v) => set({ name: v })} maxLength={40} placeholder={t('rules.namePh')} placeholderTextColor="#9ca3af" style={styles.input} />
 
-        <Text style={styles.label}>ถ้าสลิป...</Text>
+        <Text style={styles.label}>{t('rules.if')}</Text>
         <View style={styles.chips}>
           {KINDS.map((k) => {
             const active = form.match_kind === k.kind;
@@ -151,22 +159,22 @@ export default function SlipRulesScreen() {
           })}
         </View>
         {form.match_kind !== 'self' && (
-          <TextInput value={form.match_text} onChangeText={(t) => set({ match_text: t })} placeholder={form.match_kind === 'to' ? 'คำในชื่อผู้รับ เช่น สมศรี, หอพัก' : 'คำในชื่อผู้โอน'} placeholderTextColor="#9ca3af" style={styles.input} />
+          <TextInput value={form.match_text} onChangeText={(v) => set({ match_text: v })} placeholder={form.match_kind === 'to' ? t('rules.toPh') : t('rules.fromPh')} placeholderTextColor="#9ca3af" style={styles.input} />
         )}
         <View style={styles.pickerWrap}>
           <Picker selectedValue={form.bank_id ?? 0} onValueChange={(v) => set({ bank_id: Number(v) || null })} style={styles.picker}>
-            <Picker.Item label="ธนาคารปลายทาง: ธนาคารใดก็ได้" value={0} />
-            {banks.map((b) => <Picker.Item key={b.id} label={`ธนาคารปลายทาง: ${b.name}`} value={b.id} />)}
+            <Picker.Item label={t('rules.anyBank')} value={0} />
+            {banks.map((b) => <Picker.Item key={b.id} label={t('rules.bankItem', { name: b.name })} value={b.id} />)}
           </Picker>
         </View>
 
-        <Text style={styles.label}>ให้บันทึกเป็น...</Text>
+        <Text style={styles.label}>{t('rules.then')}</Text>
         <View style={styles.chips}>
           {(['transaction', 'transfer'] as const).map((a) => {
             const active = form.action === a;
             return (
               <PressScale key={a} onPress={() => set({ action: a })} style={[styles.chip, active && styles.chipActive]}>
-                <Text style={{ color: active ? '#fff' : COLORS.primary, fontWeight: '700' }}>{a === 'transaction' ? '🧾 รายการรับ/จ่าย' : '🔁 โอนระหว่างบัญชีตัวเอง'}</Text>
+                <Text style={{ color: active ? '#fff' : COLORS.primary, fontWeight: '700' }}>{a === 'transaction' ? t('rules.asTxn') : t('rules.asTransfer')}</Text>
               </PressScale>
             );
           })}
@@ -180,7 +188,7 @@ export default function SlipRulesScreen() {
                 const color = CATEGORY_COLORS[c.code];
                 return (
                   <PressScale key={c.id} onPress={() => set({ category_id: c.id, subcategory_id: null })} style={[styles.chip, { borderColor: color }, active && { backgroundColor: color }]}>
-                    <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{CATEGORY_ICONS[c.code]} {c.name}</Text>
+                    <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{CATEGORY_ICONS[c.code]} {tCode('category', c.code, c.name)}</Text>
                   </PressScale>
                 );
               })}
@@ -188,29 +196,29 @@ export default function SlipRulesScreen() {
             {!!category?.subcategories.length && (
               <View style={styles.pickerWrap}>
                 <Picker selectedValue={form.subcategory_id ?? 0} onValueChange={(v) => set({ subcategory_id: Number(v) || null })} style={styles.picker}>
-                  <Picker.Item label="-- รายการ: ไม่ระบุ --" value={0} />
+                  <Picker.Item label={t('form.itemNone')} value={0} />
                   {category.subcategories.map((s) => <Picker.Item key={s.id} label={s.name} value={s.id} />)}
                 </Picker>
               </View>
             )}
-            {accountPicker(form.account_id, (id) => set({ account_id: id }), 'บัญชี: ตามธนาคารในสลิป')}
-            <TextInput value={form.payee} onChangeText={(t) => set({ payee: t })} placeholder="ผู้รับ (ว่าง = ใช้ชื่อในสลิป)" placeholderTextColor="#9ca3af" style={styles.input} />
+            {accountPicker(form.account_id, (id) => set({ account_id: id }), t('rules.accountBySlip'))}
+            <TextInput value={form.payee} onChangeText={(v) => set({ payee: v })} placeholder={t('rules.payeePh')} placeholderTextColor="#9ca3af" style={styles.input} />
           </>
         ) : (
           <>
-            {accountPicker(form.account_id, (id) => set({ account_id: id }), 'จากบัญชี: ตามธนาคารในสลิป')}
-            {accountPicker(form.to_account_id, (id) => set({ to_account_id: id }), 'ไปบัญชี: ตามธนาคารปลายทาง')}
+            {accountPicker(form.account_id, (id) => set({ account_id: id }), t('rules.fromBySlip'))}
+            {accountPicker(form.to_account_id, (id) => set({ to_account_id: id }), t('rules.toByBank'))}
           </>
         )}
-        <TextInput value={form.note} onChangeText={(t) => set({ note: t })} placeholder="หมายเหตุ (ไม่บังคับ)" placeholderTextColor="#9ca3af" style={styles.input} />
-        <Text style={styles.hint}>เมื่อสแกนสลิปที่ตรงเงื่อนไข ระบบจะเติมฟอร์มให้ คุณยังต้องกดคอนเฟิร์มเอง · ตรวจจากบนลงล่าง ใช้เงื่อนไขแรกที่ตรง</Text>
+        <TextInput value={form.note} onChangeText={(v) => set({ note: v })} placeholder={t('rules.notePh')} placeholderTextColor="#9ca3af" style={styles.input} />
+        <Text style={styles.hint}>{t('rules.hint')}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {!!editId && <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={reset} />}
-          <Button title={saving ? 'กำลังบันทึก...' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={saving} />
+          {!!editId && <Button title={t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={reset} />}
+          <Button title={saving ? t('common.saving') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={saving} />
         </View>
       </Card>
 
-      {rules.length === 0 && <Text style={[styles.hint, { textAlign: 'center' }]}>ยังไม่มีเงื่อนไข</Text>}
+      {rules.length === 0 && <Text style={[styles.hint, { textAlign: 'center' }]}>{t('rules.empty')}</Text>}
       {rules.map((r, i) => {
         const code = categories.find((c) => c.id === r.category_id)?.code;
         return (
@@ -222,16 +230,16 @@ export default function SlipRulesScreen() {
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={styles.name} numberOfLines={1}>{i + 1}. {r.name}</Text>
                 <Text style={styles.hint} numberOfLines={1}>{condition(r)}</Text>
-                <Text style={styles.hint} numberOfLines={1}>{outcome(r)}</Text>
+                <Text style={styles.hint} numberOfLines={1}>{outcome(r, categories, accounts)}</Text>
               </View>
               <View style={{ flexDirection: 'row', gap: 6 }}>
-                <PressScale onPress={() => move(r, -1)} disabled={i === 0} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel="เลื่อนขึ้น">
+                <PressScale onPress={() => move(r, -1)} disabled={i === 0} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel={t('rules.up')}>
                   <Text style={styles.iconText}>▲</Text>
                 </PressScale>
-                <PressScale onPress={() => move(r, 1)} disabled={i === rules.length - 1} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel="เลื่อนลง">
+                <PressScale onPress={() => move(r, 1)} disabled={i === rules.length - 1} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel={t('rules.down')}>
                   <Text style={styles.iconText}>▼</Text>
                 </PressScale>
-                <PressScale onPress={() => remove(r)} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel="ลบ">
+                <PressScale onPress={() => remove(r)} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel={t('common.delete')}>
                   <Text style={{ fontSize: 12 }}>🗑️</Text>
                 </PressScale>
               </View>

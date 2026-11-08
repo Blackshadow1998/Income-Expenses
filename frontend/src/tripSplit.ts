@@ -1,8 +1,16 @@
 // Pure helpers for trip bill splitting, shared by the screens and tested with `node --test`
-// (no imports, so it runs without the app). The server (backend/split) has the final say; this
-// mirrors its rules for the live preview in the bill form.
+// (type-only imports, so it runs without the app). The server (backend/split) has the final say; this
+// mirrors its rules for the live preview in the bill form. Texts are translation keys: the caller
+// translates them (the app with t(), the tests with locales/th.ts).
+import type { TKey } from './i18n';
 
 export type Mode = 'equal' | 'amount' | 'ratio';
+
+export type Params = Record<string, string | number>;
+/** t() from i18n, passed in so this file needs nothing from the app at run time. */
+export type Translate = (key: TKey, params?: Params) => string;
+/** Why a split is not possible, as a translation key and its values. */
+export type SplitError = { key: TKey; params?: Params };
 
 /** Baht (as typed) to satang; NaN when not a number. */
 export function toSatang(baht: string | number): number {
@@ -21,24 +29,24 @@ export function bahtText(satang: number): string {
 /**
  * Splits a bill (satang) like the server: equal by default; 'amount' takes each value in satang and
  * must add up; 'ratio' splits by weight. Satang left over go to the payer when they share the bill,
- * otherwise to the first person listed. Returns shares in the order given, or an error message.
+ * otherwise to the first person listed. Returns shares in the order given, or an error to translate.
  */
 export function shares(
   amount: number,
   payer: number,
   mode: Mode,
   parts: { member: number; value: number }[],
-): { shares: number[] } | { error: string } {
-  if (!(amount > 0)) return { error: 'ยอดบิลต้องมากกว่า 0' };
-  if (parts.length === 0) return { error: 'ต้องเลือกคนหารอย่างน้อย 1 คน' };
+): { shares: number[] } | { error: SplitError } {
+  if (!(amount > 0)) return { error: { key: 'split.amountPositive' } };
+  if (parts.length === 0) return { error: { key: 'split.noMembers' } };
   let out: number[];
   if (mode === 'amount') {
-    if (parts.some((p) => !(p.value >= 0))) return { error: 'ยอดของแต่ละคนต้องไม่ติดลบ' };
+    if (parts.some((p) => !(p.value >= 0))) return { error: { key: 'split.negative' } };
     const sum = parts.reduce((s, p) => s + p.value, 0);
-    if (sum !== amount) return { error: `ยอดที่แบ่งรวมกันได้ ${bahtText(sum)} ไม่เท่ากับยอดบิล ${bahtText(amount)}` };
+    if (sum !== amount) return { error: { key: 'split.mismatch', params: { sum: bahtText(sum), amount: bahtText(amount) } } };
     return { shares: parts.map((p) => p.value) };
   } else if (mode === 'ratio') {
-    if (parts.some((p) => !(p.value > 0) || !Number.isInteger(p.value))) return { error: 'สัดส่วนต้องเป็นจำนวนเต็มที่มากกว่า 0' };
+    if (parts.some((p) => !(p.value > 0) || !Number.isInteger(p.value))) return { error: { key: 'split.badRatio' } };
     const total = parts.reduce((s, p) => s + p.value, 0);
     out = parts.map((p) => Math.floor((amount * p.value) / total));
   } else {
@@ -59,22 +67,22 @@ export interface SummaryForText {
   people: { name: string; net: number }[];
 }
 
-/** Plain-text summary to paste into a LINE group. */
-export function summaryText(tripName: string, s: SummaryForText): string {
+/** Plain-text summary to paste into a LINE group, in the language of `t`. */
+export function summaryText(tripName: string, s: SummaryForText, t: Translate): string {
   const baht = (b: number) => bahtText(Math.round(b * 100));
   const rows = (s.mode === 'minimal' ? s.transfers : s.pairs.filter((p) => p.remaining > 0)).map(
-    (p) => `• ${p.from_name} โอนให้ ${p.to_name} ${baht(p.remaining)} บาท`,
+    (p) => t('split.textRow', { from: p.from_name, to: p.to_name, amount: baht(p.remaining) }),
   );
-  const done = s.mode === 'pairwise' ? s.pairs.filter((p) => p.status === 'paid').map((p) => `✓ ${p.from_name} → ${p.to_name} จ่ายครบแล้ว`) : [];
+  const done = s.mode === 'pairwise' ? s.pairs.filter((p) => p.status === 'paid').map((p) => t('split.textPaid', { from: p.from_name, to: p.to_name })) : [];
   const nets = s.people.map((p) => `${p.name} ${p.net > 0 ? '+' : ''}${baht(p.net)}`);
   return [
-    `🧾 สรุปค่าใช้จ่ายทริป "${tripName}"`,
-    `ยอดรวม ${baht(s.total)} บาท`,
+    t('split.textTitle', { name: tripName }),
+    t('split.textTotal', { amount: baht(s.total) }),
     '',
-    rows.length ? 'ใครต้องโอนให้ใคร:' : 'ทุกคนจ่ายครบแล้ว 🎉',
+    rows.length ? t('split.textWho') : t('split.textAllPaid'),
     ...rows,
     ...(done.length ? ['', ...done] : []),
     '',
-    `ยอดคงเหลือ (+ ได้รับ / − ต้องจ่าย): ${nets.join(', ')}`,
+    t('split.textNets', { nets: nets.join(', ') }),
   ].join('\n');
 }

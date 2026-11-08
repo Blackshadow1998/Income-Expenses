@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api } from '@/api';
 import { Button, Card } from '@/components/ui';
 import { COLORS, showInfo } from '@/format';
+import { t } from '@/i18n';
 
 export default function ChangePasswordScreen() {
   const [current, setCurrent] = useState('');
@@ -14,12 +15,12 @@ export default function ChangePasswordScreen() {
 
   const save = async () => {
     setError(null);
-    if (next.length < 8) return setError('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
-    if (next !== next2) return setError('รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');
+    if (next.length < 8) return setError(t('auth.pwTooShort'));
+    if (next !== next2) return setError(t('auth.pwMismatch'));
     setSaving(true);
     try {
       await api.auth.changePassword(current, next);
-      showInfo('เปลี่ยนรหัสผ่านแล้ว', 'อุปกรณ์อื่นที่เคยเข้าสู่ระบบไว้จะต้องเข้าสู่ระบบใหม่');
+      showInfo(t('auth.pwChangedTitle'), t('auth.pwChangedBody'));
       router.back();
     } catch (e) {
       setError((e as Error).message);
@@ -31,11 +32,11 @@ export default function ChangePasswordScreen() {
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Card style={{ gap: 12 }}>
-        <Field label="รหัสผ่านปัจจุบัน (หรือรหัสชั่วคราว)" value={current} onChange={setCurrent} />
-        <Field label="รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)" value={next} onChange={setNext} />
-        <Field label="ยืนยันรหัสผ่านใหม่" value={next2} onChange={setNext2} onSubmit={save} />
+        <Field label={t('auth.currentPw')} value={current} onChange={setCurrent} />
+        <Field label={t('auth.newPw')} value={next} onChange={setNext} />
+        <Field label={t('auth.newPw2')} value={next2} onChange={setNext2} onSubmit={save} />
         {!!error && <Text style={{ color: COLORS.out }}>{error}</Text>}
-        <Button title={saving ? 'กำลังบันทึก...' : 'เปลี่ยนรหัสผ่าน'} onPress={save} disabled={saving} />
+        <Button title={saving ? t('common.saving') : t('auth.changePw')} onPress={save} disabled={saving} />
       </Card>
     </ScrollView>
   );

@@ -1,42 +1,57 @@
 import { StyleSheet, Text, View } from 'react-native';
-import type { Insights } from '../api';
+import type { CategoryCode, Insights } from '../api';
 import { COLORS, dateLabel, money } from '../format';
 import { Card } from './ui';
+import { t, tCode, tParts } from '../i18n';
+import { th } from '../locales/th';
+
+const CODES: CategoryCode[] = ['income', 'expense', 'lend', 'borrow', 'lend_return', 'borrow_repay'];
+/** Top items come as a bare name (the item, or the category when there is none): translate the category ones. */
+const itemName = (name: string) => tCode('category', CODES.find((c) => th[`category.${c}`] === name), name);
 
 /** "💡 สรุปเดือนนี้": spending vs last month, top items, daily average, biggest expense. */
 export function InsightsCard({ data }: { data: Insights }) {
   if (data.out === 0 && data.prev_out === 0) return null;
   const up = (data.change_pct ?? 0) > 0;
+  // Sentences with a bold value inside: the text before and after it.
+  const change = tParts(up ? 'insights.spentMore' : 'insights.spentLess');
+  const avg = tParts('insights.avgPerDay');
+  const biggest = tParts('insights.biggest');
   return (
     <Card style={{ gap: 10 }}>
-      <Text style={styles.h3}>💡 สรุปเดือนนี้</Text>
+      <Text style={styles.h3}>{t('insights.title')}</Text>
       {data.change_pct !== null && (
         <Line icon={up ? '📈' : '📉'}>
-          ใช้จ่าย{up ? 'มากกว่า' : 'น้อยกว่า'}เดือนก่อน{' '}
+          {change[0]}
           <Text style={{ fontWeight: '800', color: up ? COLORS.out : COLORS.in }}>{Math.abs(data.change_pct).toFixed(0)}%</Text>
+          {change[1]}
           <Text style={styles.muted}> ({money(data.prev_out)} → {money(data.out)})</Text>
         </Line>
       )}
       <Line icon="📅">
-        เฉลี่ยวันละ <Text style={styles.bold}>{money(data.avg_per_day)}</Text> บาท
+        {avg[0]}
+        <Text style={styles.bold}>{money(data.avg_per_day)}</Text>
+        {avg[1]}
       </Line>
       {data.top.length > 0 && (
         <Line icon="🏆">
-          ใช้มากสุด:{' '}
-          {data.top.map((t, i) => (
-            <Text key={t.name}>
+          {t('insights.top')}{' '}
+          {data.top.map((top, i) => (
+            <Text key={top.name}>
               {i > 0 ? ', ' : ''}
-              <Text style={styles.bold}>{t.name}</Text>
-              <Text style={styles.muted}> {money(t.amount)}</Text>
+              <Text style={styles.bold}>{itemName(top.name)}</Text>
+              <Text style={styles.muted}> {money(top.amount)}</Text>
             </Text>
           ))}
         </Line>
       )}
       {data.biggest && (
         <Line icon="💥">
-          ก้อนใหญ่สุด <Text style={styles.bold}>{money(data.biggest.amount)}</Text>{' '}
+          {biggest[0]}
+          <Text style={styles.bold}>{money(data.biggest.amount)}</Text>
+          {biggest[1]}{' '}
           <Text style={styles.muted}>
-            {data.biggest.subcategory_name || data.biggest.note || data.biggest.category_name} · {dateLabel(data.biggest.date)}
+            {data.biggest.subcategory_name || data.biggest.note || tCode('category', data.biggest.category_code, data.biggest.category_name)} · {dateLabel(data.biggest.date)}
           </Text>
         </Line>
       )}

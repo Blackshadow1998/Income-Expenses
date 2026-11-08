@@ -8,14 +8,15 @@ import { BarChart, BarSeries } from '@/components/BarChart';
 import { AnimatedNumber, FadeIn, PressScale, Skeleton } from '@/components/motion';
 import { PeriodSwitch } from '@/components/PeriodSwitch';
 import { Button, Card, ErrorBox, Stepper } from '@/components/ui';
-import { CATEGORY_COLORS, COLORS, GRADIENTS, money, MONTHS_FULL, MONTHS_SHORT, pad2 } from '@/format';
+import { CATEGORY_COLORS, COLORS, GRADIENTS, money, MONTHS_FULL, MONTHS_SHORT, pad2, yearLabel } from '@/format';
+import { t, tCode } from '@/i18n';
 import { setPendingMonth } from '@/state';
 
 type Mode = 'inout' | 'category';
 
 const IN_OUT: BarSeries[] = [
-  { key: 'in', label: 'เงินเข้า', color: COLORS.in },
-  { key: 'out', label: 'เงินออก', color: COLORS.out },
+  { key: 'in', label: t('money.in'), color: COLORS.in },
+  { key: 'out', label: t('money.out'), color: COLORS.out },
 ];
 
 export default function YearlyScreen() {
@@ -58,7 +59,7 @@ export default function YearlyScreen() {
   const series: BarSeries[] =
     mode === 'inout'
       ? IN_OUT
-      : categories.map((c) => ({ key: c.code, label: c.name, color: CATEGORY_COLORS[c.code] }));
+      : categories.map((c) => ({ key: c.code, label: tCode('category', c.code, c.name), color: CATEGORY_COLORS[c.code] }));
   const values =
     data?.months.map((m) => (mode === 'inout' ? { in: m.in, out: m.out } : (m.by_category as Record<string, number>))) ?? [];
 
@@ -81,11 +82,11 @@ export default function YearlyScreen() {
       <FadeIn>
         <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <View style={[styles.blob, { width: 170, height: 170, top: -60, right: -40 }]} />
-          <Stepper light label={`ปี ${year + 543}`} onPrev={() => load(year - 1)} onNext={() => load(year + 1)} />
+          <Stepper light label={t('year.label', { year: yearLabel(year) })} onPrev={() => load(year - 1)} onNext={() => load(year + 1)} />
           <View style={styles.statsRow}>
-            <Stat label="เงินเข้าทั้งปี" value={data?.totals.in} />
-            <Stat label="เงินออกทั้งปี" value={data?.totals.out} />
-            <Stat label="สุทธิทั้งปี" value={data?.totals.net} />
+            <Stat label={t('year.totalIn')} value={data?.totals.in} />
+            <Stat label={t('year.totalOut')} value={data?.totals.out} />
+            <Stat label={t('year.net')} value={data?.totals.net} />
           </View>
         </LinearGradient>
       </FadeIn>
@@ -100,12 +101,12 @@ export default function YearlyScreen() {
           <FadeIn delay={100}>
             <Card style={{ gap: 12 }}>
               <View style={styles.modeRow}>
-                <Text style={styles.h2}>กราฟรายเดือน</Text>
+                <Text style={styles.h2}>{t('year.chart')}</Text>
                 <View style={styles.segment}>
                   {(['inout', 'category'] as const).map((m) => (
                     <PressScale key={m} onPress={() => setMode(m)} style={[styles.segBtn, mode === m && styles.segBtnActive]}>
                       <Text style={[styles.segText, mode === m && { color: COLORS.primary }]}>
-                        {m === 'inout' ? 'เข้า/ออก' : 'แยกหมวด'}
+                        {m === 'inout' ? t('year.modeInOut') : t('year.modeCategory')}
                       </Text>
                     </PressScale>
                   ))}
@@ -118,7 +119,7 @@ export default function YearlyScreen() {
                 selected={selected}
                 onSelect={(i) => setSelected(i === selected ? null : i)}
               />
-              <Text style={{ color: COLORS.muted, fontSize: 12 }}>แตะที่เดือนเพื่อดูรายละเอียด</Text>
+              <Text style={{ color: COLORS.muted, fontSize: 12 }}>{t('year.tapHint')}</Text>
             </Card>
           </FadeIn>
 
@@ -126,19 +127,19 @@ export default function YearlyScreen() {
             <FadeIn key={sel.month}>
               <Card style={{ gap: 8 }}>
                 <Text style={styles.h2}>
-                  {MONTHS_FULL[sel.month - 1]} {year + 543}
+                  {MONTHS_FULL[sel.month - 1]} {yearLabel(year)}
                 </Text>
                 {categories.map((c) => (
                   <View key={c.id} style={styles.line}>
-                    <Text style={{ color: CATEGORY_COLORS[c.code], fontWeight: '600' }}>{c.name}</Text>
+                    <Text style={{ color: CATEGORY_COLORS[c.code], fontWeight: '600' }}>{tCode('category', c.code, c.name)}</Text>
                     <Text>{money(sel.by_category[c.code] ?? 0)}</Text>
                   </View>
                 ))}
                 <View style={[styles.line, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 8 }]}>
-                  <Text style={{ fontWeight: '700' }}>สุทธิ</Text>
+                  <Text style={{ fontWeight: '700' }}>{t('common.net')}</Text>
                   <Text style={{ fontWeight: '700', color: sel.net >= 0 ? COLORS.in : COLORS.out }}>{money(sel.net)}</Text>
                 </View>
-                <Button title="ดูรายการเดือนนี้" variant="soft" onPress={() => openMonth(sel.month - 1)} />
+                <Button title={t('year.openMonth')} variant="soft" onPress={() => openMonth(sel.month - 1)} />
               </Card>
             </FadeIn>
           )}
@@ -146,10 +147,10 @@ export default function YearlyScreen() {
           <FadeIn delay={180}>
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <View style={[styles.tr, styles.th]}>
-                <Text style={[styles.td, styles.tdMonth, styles.thText]}>เดือน</Text>
-                <Text style={[styles.td, styles.thText]}>เข้า</Text>
-                <Text style={[styles.td, styles.thText]}>ออก</Text>
-                <Text style={[styles.td, styles.thText]}>สุทธิ</Text>
+                <Text style={[styles.td, styles.tdMonth, styles.thText]}>{t('year.colMonth')}</Text>
+                <Text style={[styles.td, styles.thText]}>{t('year.colIn')}</Text>
+                <Text style={[styles.td, styles.thText]}>{t('year.colOut')}</Text>
+                <Text style={[styles.td, styles.thText]}>{t('common.net')}</Text>
               </View>
               {data.months.map((m) => (
                 <View key={m.month} style={styles.tr}>

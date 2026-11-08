@@ -5,14 +5,18 @@ import { api, Category, Transaction } from '@/api';
 import { FadeIn, PressScale } from '@/components/motion';
 import { Card, IconBubble, Loading } from '@/components/ui';
 import { CATEGORY_COLORS, CATEGORY_ICONS, CATEGORY_TINTS, COLORS, dateLabel, money, toISODate } from '@/format';
+import { t, tCode, tParts } from '@/i18n';
 
 type Range = 'all' | 'month' | '3m' | 'year';
 const RANGES: { key: Range; label: string }[] = [
-  { key: 'all', label: 'ทั้งหมด' },
-  { key: 'month', label: 'เดือนนี้' },
-  { key: '3m', label: '3 เดือน' },
-  { key: 'year', label: 'ปีนี้' },
+  { key: 'all', label: t('search.all') },
+  { key: 'month', label: t('search.month') },
+  { key: '3m', label: t('search.3m') },
+  { key: 'year', label: t('search.year') },
 ];
+
+/** "Found {n} · in {in} · out {out}" around the count and the two coloured amounts. */
+const summary = tParts('search.summary');
 
 function rangeFrom(r: Range): string {
   const d = new Date();
@@ -60,7 +64,7 @@ export default function SearchScreen() {
       <TextInput
         value={q}
         onChangeText={setQ}
-        placeholder="🔍 ค้นหา: รายละเอียด, ผู้รับ, รายการ"
+        placeholder={t('search.placeholder')}
         placeholderTextColor="#9ca3af"
         autoFocus
         style={[styles.input, { fontSize: 16 }]}
@@ -71,14 +75,14 @@ export default function SearchScreen() {
         ))}
       </View>
       <View style={styles.chips}>
-        <Chip label="ทุกหมวด" active={categoryId === null} onPress={() => setCategoryId(null)} />
+        <Chip label={t('search.allCategories')} active={categoryId === null} onPress={() => setCategoryId(null)} />
         {categories.map((c) => (
-          <Chip key={c.id} label={`${CATEGORY_ICONS[c.code]} ${c.name}`} active={categoryId === c.id} color={CATEGORY_COLORS[c.code]} onPress={() => setCategoryId(c.id)} />
+          <Chip key={c.id} label={`${CATEGORY_ICONS[c.code]} ${tCode('category', c.code, c.name)}`} active={categoryId === c.id} color={CATEGORY_COLORS[c.code]} onPress={() => setCategoryId(c.id)} />
         ))}
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <TextInput value={min} onChangeText={(t) => setMin(t.replace(/[^0-9.]/g, ''))} placeholder="ขั้นต่ำ (บาท)" placeholderTextColor="#9ca3af" keyboardType="decimal-pad" style={[styles.input, { flex: 1, minWidth: 0 }]} />
-        <TextInput value={max} onChangeText={(t) => setMax(t.replace(/[^0-9.]/g, ''))} placeholder="สูงสุด (บาท)" placeholderTextColor="#9ca3af" keyboardType="decimal-pad" style={[styles.input, { flex: 1, minWidth: 0 }]} />
+        <TextInput value={min} onChangeText={(v) => setMin(v.replace(/[^0-9.]/g, ''))} placeholder={t('search.min')} placeholderTextColor="#9ca3af" keyboardType="decimal-pad" style={[styles.input, { flex: 1, minWidth: 0 }]} />
+        <TextInput value={max} onChangeText={(v) => setMax(v.replace(/[^0-9.]/g, ''))} placeholder={t('search.max')} placeholderTextColor="#9ca3af" keyboardType="decimal-pad" style={[styles.input, { flex: 1, minWidth: 0 }]} />
       </View>
 
       {error ? (
@@ -88,29 +92,35 @@ export default function SearchScreen() {
       ) : (
         <>
           <Text style={styles.summary}>
-            พบ {result.items.length}{result.capped ? '+' : ''} รายการ · เข้า <Text style={{ color: COLORS.in }}>{money(result.totals.in)}</Text> · ออก{' '}
+            {summary[0]}
+            {result.items.length}
+            {result.capped ? '+' : ''}
+            {summary[1]}
+            <Text style={{ color: COLORS.in }}>{money(result.totals.in)}</Text>
+            {summary[2]}
             <Text style={{ color: COLORS.out }}>{money(result.totals.out)}</Text>
+            {summary[3]}
           </Text>
           {result.items.length > 0 && (
             <Card style={{ padding: 0, overflow: 'hidden' }}>
-              {result.items.map((t, i) => (
-                <FadeIn key={t.id} delay={Math.min(i * 25, 300)} from={6}>
+              {result.items.map((txn, i) => (
+                <FadeIn key={txn.id} delay={Math.min(i * 25, 300)} from={6}>
                   <PressScale
-                    onPress={() => router.push({ pathname: '/transaction', params: { id: String(t.id) } })}
+                    onPress={() => router.push({ pathname: '/transaction', params: { id: String(txn.id) } })}
                     scaleTo={0.98}
                     style={[styles.row, i > 0 && styles.divider]}
                   >
-                    <IconBubble icon={CATEGORY_ICONS[t.category_code]} tint={CATEGORY_TINTS[t.category_code]} size={38} />
+                    <IconBubble icon={CATEGORY_ICONS[txn.category_code]} tint={CATEGORY_TINTS[txn.category_code]} size={38} />
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={styles.title} numberOfLines={1}>{t.subcategory_name || t.note || t.category_name}</Text>
+                      <Text style={styles.title} numberOfLines={1}>{txn.subcategory_name || txn.note || tCode('category', txn.category_code, txn.category_name)}</Text>
                       <Text style={styles.sub} numberOfLines={1}>
-                        {dateLabel(t.date)}
-                        {t.payee ? ` · 👤 ${t.payee}` : ''}
-                        {t.subcategory_name && t.note ? ` · ${t.note}` : ''}
+                        {dateLabel(txn.date)}
+                        {txn.payee ? ` · 👤 ${txn.payee}` : ''}
+                        {txn.subcategory_name && txn.note ? ` · ${txn.note}` : ''}
                       </Text>
                     </View>
-                    <Text style={{ fontWeight: '800', color: t.direction > 0 ? COLORS.in : COLORS.out }}>
-                      {t.direction > 0 ? '+' : '−'}{money(t.amount)}
+                    <Text style={{ fontWeight: '800', color: txn.direction > 0 ? COLORS.in : COLORS.out }}>
+                      {txn.direction > 0 ? '+' : '−'}{money(txn.amount)}
                     </Text>
                   </PressScale>
                 </FadeIn>

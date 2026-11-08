@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, Text } from 'react-native';
 import type { Account } from '../api';
 import { COLORS, shortAccountLabel } from '../format';
 import { PressScale } from './motion';
+import { t } from '../i18n';
 
 /** Chips to show everything ("ทุกบัญชี") or just one account. null = all accounts. */
 export function AccountFilter({
@@ -15,7 +16,7 @@ export function AccountFilter({
 }) {
   if (accounts.length === 0) return null;
   const chips: { id: number | null; label: string }[] = [
-    { id: null, label: 'ทุกบัญชี' },
+    { id: null, label: t('accounts.all') },
     ...accounts.map((a) => ({ id: a.id, label: shortAccountLabel(a) })),
   ];
   return (

@@ -4,6 +4,7 @@ import { api, Category, Subcategory } from '@/api';
 import { FadeIn, PressScale } from '@/components/motion';
 import { Button, Card, ErrorBox, IconBubble, Loading } from '@/components/ui';
 import { CATEGORY_ICONS, CATEGORY_TINTS, COLORS, confirmAsync, showError } from '@/format';
+import { t, tCode } from '@/i18n';
 
 /** Add, rename and delete the items ("รายการ") offered in the add/edit form, per category. */
 export default function SubcategoriesScreen() {
@@ -28,7 +29,7 @@ export default function SubcategoriesScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-      <Text style={styles.hint}>รายการเหล่านี้จะขึ้นให้เลือกในหน้าเพิ่ม/แก้ไขรายการ ตามหมวดหมู่</Text>
+      <Text style={styles.hint}>{t('subcats.hint')}</Text>
       {categories.map((c, i) => (
         <FadeIn key={c.id} delay={i * 60}>
           <CategoryCard category={c} onChanged={load} />
@@ -60,8 +61,8 @@ function CategoryCard({ category, onChanged }: { category: Category; onChanged: 
     <Card style={{ gap: 10 }}>
       <View style={styles.cardHeader}>
         <IconBubble icon={CATEGORY_ICONS[category.code]} tint={CATEGORY_TINTS[category.code]} size={34} />
-        <Text style={styles.h2}>{category.name}</Text>
-        <Text style={styles.count}>{category.subcategories.length} รายการ</Text>
+        <Text style={styles.h2}>{tCode('category', category.code, category.name)}</Text>
+        <Text style={styles.count}>{t('subcats.count', { n: category.subcategories.length })}</Text>
       </View>
       {category.subcategories.map((s) => (
         <ItemRow key={s.id} item={s} onChanged={onChanged} />
@@ -71,11 +72,11 @@ function CategoryCard({ category, onChanged }: { category: Category; onChanged: 
           value={newName}
           onChangeText={setNewName}
           onSubmitEditing={add}
-          placeholder={`เพิ่มรายการใน "${category.name}"`}
+          placeholder={t('subcats.addPh', { name: tCode('category', category.code, category.name) })}
           placeholderTextColor="#9ca3af"
           style={[styles.input, { flex: 1 }]}
         />
-        <Button title="เพิ่ม" icon="＋" small onPress={add} disabled={busy || !newName.trim()} />
+        <Button title={t('month.add')} icon="＋" small onPress={add} disabled={busy || !newName.trim()} />
       </View>
     </Card>
   );
@@ -102,8 +103,8 @@ function ItemRow({ item, onChanged }: { item: Subcategory; onChanged: () => Prom
 
   const remove = async () => {
     const ok = await confirmAsync(
-      'ลบรายการ',
-      `ต้องการลบ "${item.name}" ใช่หรือไม่?\nรายการรับ/จ่ายที่เคยเลือกไว้จะยังอยู่ แต่จะเป็น "ไม่ระบุ"`,
+      t('subcats.deleteTitle'),
+      t('subcats.deleteBody', { name: item.name }),
     );
     if (!ok) return;
     try {
@@ -118,8 +119,8 @@ function ItemRow({ item, onChanged }: { item: Subcategory; onChanged: () => Prom
     return (
       <View style={styles.addRow}>
         <TextInput value={name} onChangeText={setName} onSubmitEditing={save} autoFocus style={[styles.input, { flex: 1 }]} />
-        <Button title="บันทึก" small onPress={save} />
-        <Button title="ยกเลิก" small variant="ghost" onPress={() => { setEditing(false); setName(item.name); }} />
+        <Button title={t('common.save')} small onPress={save} />
+        <Button title={t('common.cancel')} small variant="ghost" onPress={() => { setEditing(false); setName(item.name); }} />
       </View>
     );
   }
@@ -128,10 +129,10 @@ function ItemRow({ item, onChanged }: { item: Subcategory; onChanged: () => Prom
       <PressScale onPress={() => setEditing(true)} scaleTo={0.98} containerStyle={{ flex: 1 }} style={{ paddingVertical: 4 }}>
         <Text style={{ color: COLORS.text, fontSize: 15 }}>{item.name}</Text>
       </PressScale>
-      <PressScale onPress={() => setEditing(true)} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel="แก้ชื่อ">
+      <PressScale onPress={() => setEditing(true)} hitSlop={6} scaleTo={0.85} style={styles.iconBtn} accessibilityLabel={t('subcats.rename')}>
         <Text style={{ fontSize: 13 }}>✏️</Text>
       </PressScale>
-      <PressScale onPress={remove} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel="ลบ">
+      <PressScale onPress={remove} hitSlop={6} scaleTo={0.85} style={[styles.iconBtn, { backgroundColor: COLORS.dangerSoft }]} accessibilityLabel={t('common.delete')}>
         <Text style={{ fontSize: 13 }}>🗑️</Text>
       </PressScale>
     </View>

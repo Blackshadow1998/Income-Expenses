@@ -3,21 +3,25 @@ package auth
 import (
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"income-expenses/internal/apitest"
+	"income-expenses/internal/httpx"
 )
 
 // mailbox captures e-mails instead of sending them.
 type mailbox struct {
 	mu   sync.Mutex
-	sent []struct{ to, subject, body string }
+	sent []struct{ to, fromName, subject, body string }
 }
 
-func (m *mailbox) send(to, subject, body string) error {
+func (m *mailbox) send(to, fromName, subject, body string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.sent = append(m.sent, struct{ to, subject, body string }{to, subject, body})
+	m.sent = append(m.sent, struct{ to, fromName, subject, body string }{to, fromName, subject, body})
 	return nil
 }
 
@@ -135,5 +139,41 @@ func TestForgotCodeExpiresAndLimitsTries(t *testing.T) {
 	off, _ := newTestServer(t)
 	if status, _ := off.Do("POST", "/api/auth/forgot", "", map[string]string{"email": "s@example.com"}); status != http.StatusServiceUnavailable {
 		t.Fatalf("no SMTP configured: %d", status)
+	}
+}
+
+// The verification e-mail (sender name, subject, body) is in the language the code was asked in.
+func TestForgotEmailLanguage(t *testing.T) {
+	box := &mailbox{}
+	db, _ := apitest.OpenDB(t)
+	a := New(Options{DB: db})
+	a.sendMail = box.send
+	mux := http.NewServeMux()
+	a.Register(mux)
+	c := apitest.Serve(t, httpx.Language(mux))
+
+	for i, lang := range []string{"en", "th"} {
+		email := lang + "@example.com"
+		c.Do("POST", "/api/auth/signup", "", map[string]string{"username": "mail" + lang, "password": "password-1", "email": email})
+		req, _ := http.NewRequest("POST", c.URL+"/api/auth/forgot", strings.NewReader(`{"email":"`+email+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept-Language", lang)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		code := box.lastCode(t, email, i+1)
+
+		box.mu.Lock()
+		m := box.sent[len(box.sent)-1]
+		box.mu.Unlock()
+		wantFrom, wantSubject, wantBody := "Income & Expenses", "Verification code "+code+" — Income & Expenses", "Your code for setting a new password is"
+		if lang == "th" {
+			wantFrom, wantSubject, wantBody = "รายรับรายจ่าย", "รหัสยืนยัน "+code+" — รายรับรายจ่าย", "รหัสยืนยันสำหรับตั้งรหัสผ่านใหม่ของคุณคือ"
+		}
+		if m.fromName != wantFrom || m.subject != wantSubject || !strings.HasPrefix(m.body, wantBody) || !strings.Contains(m.body, code) {
+			t.Errorf("%s: from %q, subject %q, body %q", lang, m.fromName, m.subject, m.body)
+		}
 	}
 }

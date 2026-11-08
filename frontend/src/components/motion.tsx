@@ -1,6 +1,7 @@
 import { forwardRef, ReactNode, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, PressableProps, StyleProp, Text, TextStyle, ViewStyle } from 'react-native';
 import { COLORS } from '../format';
+import { t } from '../i18n';
 
 // Small animation helpers on top of React Native's built-in Animated (works on web, iOS and Android).
 const native = Platform.OS !== 'web';
@@ -113,7 +114,7 @@ export function GridLoader({ size = 44 }: { size?: number }) {
   const gap = Math.max(2, Math.round(size / 18));
   const cell = (size - gap * 2) / 3;
   return (
-    <Animated.View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', gap }} accessibilityRole="progressbar" accessibilityLabel="กำลังโหลด">
+    <Animated.View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', gap }} accessibilityRole="progressbar" accessibilityLabel={t('common.loading')}>
       {GRID.flatMap((row) =>
         GRID.map((col) => {
           const d = (row + col) * 0.1 + 0.001; // diagonal delay, 0..0.4 of the cycle

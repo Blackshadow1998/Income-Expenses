@@ -14,16 +14,17 @@ type Config struct {
 	Host, Port, User, Pass, From string
 }
 
-// New returns a function that sends a plain-text e-mail, or nil when User or Pass is empty.
-func New(c Config) func(to, subject, body string) error {
+// New returns a function that sends a plain-text e-mail from fromName <From> (the app's name in the
+// e-mail's language), or nil when User or Pass is empty.
+func New(c Config) func(to, fromName, subject, body string) error {
 	if c.User == "" || c.Pass == "" {
 		return nil
 	}
 	host, port, user, pass, from := c.Host, c.Port, c.User, c.Pass, c.From
 	auth := smtp.PlainAuth("", user, pass, host)
-	return func(to, subject, body string) error {
+	return func(to, fromName, subject, body string) error {
 		msg := strings.Join([]string{
-			"From: " + mime.BEncoding.Encode("utf-8", "รายรับรายจ่าย") + " <" + from + ">",
+			"From: " + mime.BEncoding.Encode("utf-8", fromName) + " <" + from + ">",
 			"To: " + to,
 			"Subject: " + mime.BEncoding.Encode("utf-8", subject),
 			"Date: " + time.Now().Format(time.RFC1123Z),

@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { COLORS, SHADOW } from '../format';
 import { PressScale } from './motion';
+import { t } from '../i18n';
 
 /** "รายเดือน | รายปี" switch at the top of the รายรับรายจ่าย tab (two routes, one tab button). */
 export function PeriodSwitch({ current }: { current: 'month' | 'year' }) {
@@ -10,7 +11,7 @@ export function PeriodSwitch({ current }: { current: 'month' | 'year' }) {
     <View style={styles.segment}>
       {(['month', 'year'] as const).map((k) => (
         <PressScale key={k} onPress={() => go(k)} containerStyle={{ flex: 1 }} style={[styles.btn, current === k && styles.btnOn]}>
-          <Text style={[styles.text, current === k && { color: COLORS.primary }]}>{k === 'month' ? '📅 รายเดือน' : '📊 รายปี'}</Text>
+          <Text style={[styles.text, current === k && { color: COLORS.primary }]}>{k === 'month' ? t('period.month') : t('period.year')}</Text>
         </PressScale>
       ))}
     </View>

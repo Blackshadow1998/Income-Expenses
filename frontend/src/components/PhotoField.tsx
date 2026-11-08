@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, Linking, Platform, StyleSheet, Text, View } f
 import { PressScale } from '@/components/motion';
 import { Button } from '@/components/ui';
 import { COLORS, showError } from '@/format';
+import { t } from '@/i18n';
 
 /** Take a photo or pick one from the library; resolves to null when cancelled or not allowed. */
 export async function pickPhoto(source: 'camera' | 'library'): Promise<ImagePicker.ImagePickerAsset | null> {
@@ -10,7 +11,7 @@ export async function pickPhoto(source: 'camera' | 'library'): Promise<ImagePick
   if (source === 'camera') {
     // On web the camera must open straight from the tap, so there is no permission round-trip first.
     if (Platform.OS !== 'web' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) {
-      showError(new Error('ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องให้แอปในการตั้งค่าเครื่อง'));
+      showError(new Error(t('photo.cameraDenied')));
       return null;
     }
     r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
@@ -39,12 +40,12 @@ export function PhotoField({ uri, onPick, onRemove, busy, emptyLabel }: {
     return (
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Button title={emptyLabel} icon="📷" variant="soft" style={{ flex: 1 }} onPress={() => pick('camera')} />
-        <Button title="เลือกรูป" icon="🖼️" variant="soft" style={{ flex: 1 }} onPress={() => pick('library')} />
+        <Button title={t('photo.pick')} icon="🖼️" variant="soft" style={{ flex: 1 }} onPress={() => pick('library')} />
       </View>
     );
   return (
     <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-      <PressScale onPress={() => Linking.openURL(uri).catch(() => {})} accessibilityLabel="ดูรูปเต็ม">
+      <PressScale onPress={() => Linking.openURL(uri).catch(() => {})} accessibilityLabel={t('photo.viewFull')}>
         <Image source={{ uri }} style={styles.preview} />
         {busy && (
           <View style={styles.busy}>
@@ -53,10 +54,10 @@ export function PhotoField({ uri, onPick, onRemove, busy, emptyLabel }: {
         )}
       </PressScale>
       <View style={{ gap: 8, flex: 1 }}>
-        {busy && <Text style={styles.hint}>กำลังอ่านรูป...</Text>}
-        <Button title="ถ่ายใหม่" icon="📷" variant="soft" small onPress={() => pick('camera')} />
-        <Button title="เลือกรูปอื่น" icon="🖼️" variant="soft" small onPress={() => pick('library')} />
-        <Button title="เอาออก" variant="outline" small onPress={onRemove} />
+        {busy && <Text style={styles.hint}>{t('photo.reading')}</Text>}
+        <Button title={t('photo.retake')} icon="📷" variant="soft" small onPress={() => pick('camera')} />
+        <Button title={t('photo.pickOther')} icon="🖼️" variant="soft" small onPress={() => pick('library')} />
+        <Button title={t('photo.remove')} variant="outline" small onPress={onRemove} />
       </View>
     </View>
   );

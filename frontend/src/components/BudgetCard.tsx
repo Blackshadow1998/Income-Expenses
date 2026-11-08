@@ -4,6 +4,7 @@ import type { Budget } from '../api';
 import { CATEGORY_ICONS, COLORS, money } from '../format';
 import { GrowBar, PressScale } from './motion';
 import { Card } from './ui';
+import { t, tCode } from '../i18n';
 
 export function budgetColor(ratio: number) {
   return ratio > 1 ? COLORS.out : ratio >= 0.8 ? '#f59e0b' : COLORS.in;
@@ -16,7 +17,7 @@ export function BudgetCard({ budgets }: { budgets: Budget[] }) {
     return (
       <PressScale onPress={manage} scaleTo={0.98} style={styles.empty}>
         <Text style={{ fontSize: 20 }}>🎯</Text>
-        <Text style={{ color: COLORS.primary, fontWeight: '700', flex: 1 }}>ตั้งงบประมาณรายเดือน</Text>
+        <Text style={{ color: COLORS.primary, fontWeight: '700', flex: 1 }}>{t('budget.setUp')}</Text>
         <Text style={{ color: COLORS.primary, fontSize: 18 }}>›</Text>
       </PressScale>
     );
@@ -24,9 +25,9 @@ export function BudgetCard({ budgets }: { budgets: Budget[] }) {
   return (
     <Card style={{ gap: 12 }}>
       <View style={styles.header}>
-        <Text style={styles.h3}>🎯 งบประมาณเดือนนี้</Text>
+        <Text style={styles.h3}>{t('budget.thisMonth')}</Text>
         <PressScale onPress={manage} hitSlop={8}>
-          <Text style={{ color: COLORS.primary, fontWeight: '700' }}>จัดการ ›</Text>
+          <Text style={{ color: COLORS.primary, fontWeight: '700' }}>{t('budget.manage')}</Text>
         </PressScale>
       </View>
       {budgets.map((b, i) => {
@@ -37,7 +38,7 @@ export function BudgetCard({ budgets }: { budgets: Budget[] }) {
           <View key={b.id} style={{ gap: 5 }}>
             <View style={styles.line}>
               <Text style={styles.name} numberOfLines={1}>
-                {CATEGORY_ICONS[b.category_code]} {b.subcategory_name || `${b.category_name} (ทั้งหมวด)`}
+                {CATEGORY_ICONS[b.category_code]} {b.subcategory_name || t('budget.wholeCategory', { name: tCode('category', b.category_code, b.category_name) })}
               </Text>
               <Text style={{ color, fontWeight: '800' }}>{Math.round(ratio * 100)}%</Text>
             </View>
@@ -45,9 +46,9 @@ export function BudgetCard({ budgets }: { budgets: Budget[] }) {
               <GrowBar fraction={Math.min(1, ratio)} color={color} delay={150 + i * 80} style={{ borderRadius: 5 }} />
             </View>
             <Text style={styles.sub}>
-              ใช้ไป {money(b.spent)} / {money(b.amount)} ·{' '}
+              {t('budget.used', { spent: money(b.spent), amount: money(b.amount) })}{' '}
               <Text style={{ color: left < 0 ? COLORS.out : COLORS.muted }}>
-                {left < 0 ? `เกินงบ ${money(-left)}` : `เหลือ ${money(left)}`}
+                {left < 0 ? t('budget.over', { amount: money(-left) }) : t('budget.left', { amount: money(left) })}
               </Text>
             </Text>
           </View>

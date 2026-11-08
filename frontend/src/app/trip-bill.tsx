@@ -7,12 +7,13 @@ import { PressScale } from '@/components/motion';
 import { PhotoField } from '@/components/PhotoField';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, confirmAsync, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
+import { t } from '@/i18n';
 import { bahtText, shares, toSatang } from '@/tripSplit';
 
 const MODES: { key: SplitMode; label: string }[] = [
-  { key: 'equal', label: 'หารเท่ากัน' },
-  { key: 'amount', label: 'ระบุจำนวน' },
-  { key: 'ratio', label: 'ตามสัดส่วน' },
+  { key: 'equal', label: t('trip.modeEqual') },
+  { key: 'amount', label: t('trip.modeAmount') },
+  { key: 'ratio', label: t('trip.modeRatio') },
 ];
 
 /** Add or edit a trip bill: title, amount, payer, who shares it and how. */
@@ -44,21 +45,21 @@ export default function TripBillScreen() {
   const load = async () => {
     setError(null);
     try {
-      const t = await api.trip(tripId);
-      setTrip(t);
-      const b = billId ? t.bills.find((x) => x.id === billId) : null;
+      const loaded = await api.trip(tripId);
+      setTrip(loaded);
+      const b = billId ? loaded.bills.find((x) => x.id === billId) : null;
       if (b) {
         setTitle(b.title);
         setAmountText(String(b.amount));
         setDate(b.date);
         setPayer(b.payer_id);
         setMode(b.split_mode);
-        setChosen(t.members.map((m) => m.id).filter((id) => b.parts.some((p) => p.member_id === id)));
+        setChosen(loaded.members.map((m) => m.id).filter((id) => b.parts.some((p) => p.member_id === id)));
         setValues(Object.fromEntries(b.parts.map((p) => [p.member_id, b.split_mode === 'equal' ? '' : String(p.value)])));
         setSavedImage(b.image_url ? api.tripBillImageUrl(b) : '');
       } else {
-        setPayer(t.members[0]?.id ?? null);
-        setChosen(t.members.map((m) => m.id)); // everyone shares by default
+        setPayer(loaded.members[0]?.id ?? null);
+        setChosen(loaded.members.map((m) => m.id)); // everyone shares by default
       }
     } catch (e) {
       setError((e as Error).message);
@@ -97,9 +98,9 @@ export default function TripBillScreen() {
     const sum = next.includes(-1) ? ocr.amount : items.reduce((s, it) => s + it.amount, 0);
     setAmountText(sum > 0 ? String(Math.round(sum * 100) / 100) : '');
     if (!title.trim() || title === autoTitle) {
-      const t = items.map((it) => it.name).join(' + ').slice(0, 80);
-      setTitle(t);
-      setAutoTitle(t);
+      const joined = items.map((it) => it.name).join(' + ').slice(0, 80);
+      setTitle(joined);
+      setAutoTitle(joined);
     }
   };
 
@@ -114,11 +115,11 @@ export default function TripBillScreen() {
   const assigned = mode === 'amount' ? chosen.reduce((s, m) => s + (toSatang(values[m] ?? '') || 0), 0) : 0;
 
   const save = async () => {
-    if (!title.trim()) return showError(new Error('กรุณาใส่ชื่อรายการ'));
-    if (!(amount > 0)) return showError(new Error('กรุณาใส่ยอดบิลที่มากกว่า 0'));
-    if (!isValidDate(date)) return showError(new Error('วันที่ต้องเป็น ปปปป-ดด-วว (ค.ศ.)'));
-    if (!payer) return showError(new Error('กรุณาเลือกผู้จ่าย'));
-    if (preview && 'error' in preview) return showError(new Error(preview.error));
+    if (!title.trim()) return showError(new Error(t('bill.titleError')));
+    if (!(amount > 0)) return showError(new Error(t('bill.amountError')));
+    if (!isValidDate(date)) return showError(new Error(t('bill.dateError')));
+    if (!payer) return showError(new Error(t('bill.payerError')));
+    if (preview && 'error' in preview) return showError(new Error(t(preview.error.key, preview.error.params)));
     const body = {
       title: title.trim(),
       amount: amount / 100,
@@ -140,7 +141,7 @@ export default function TripBillScreen() {
       if (image) await api.setTripBillImage(id!, image);
       else if (billId && !savedImage && trip?.bills.find((b) => b.id === billId)?.image_url) await api.setTripBillImage(billId, null);
     } catch (e) {
-      showError(new Error(`บันทึกบิลแล้ว แต่แนบรูปไม่สำเร็จ: ${(e as Error).message}`));
+      showError(new Error(t('bill.photoFailed', { message: (e as Error).message })));
     }
     setSaving(false);
     // A new bill from some receipt items: stay so the remaining items can be split as more bills.
@@ -148,7 +149,7 @@ export default function TripBillScreen() {
     if (!billId && ocr && !picked.includes(-1) && picked.length && ocr.items.some((_, i) => !nowUsed.includes(i))) {
       setUsed(nowUsed);
       setPicked([]);
-      setSavedNote(`บันทึก "${body.title}" แล้ว · เลือกรายการที่เหลือต่อได้`);
+      setSavedNote(t('bill.savedNote', { title: body.title }));
       setTitle('');
       setAutoTitle('');
       setAmountText('');
@@ -162,7 +163,7 @@ export default function TripBillScreen() {
   };
 
   const remove = async () => {
-    if (!billId || !(await confirmAsync('ลบบิล', `ต้องการลบบิล "${title}" ใช่หรือไม่?`))) return;
+    if (!billId || !(await confirmAsync(t('trip.deleteBillTitle'), t('bill.deleteBody', { title })))) return;
     try {
       await api.removeTripBill(billId);
       router.back();
@@ -171,7 +172,7 @@ export default function TripBillScreen() {
     }
   };
 
-  const screenTitle = billId ? 'แก้ไขบิล' : 'เพิ่มบิล';
+  const screenTitle = billId ? t('bill.edit') : t('trip.addBill');
   if (error) return <View style={styles.page}><Stack.Screen options={{ title: screenTitle }} /><ErrorBox message={error} onRetry={load} /></View>;
   if (!trip) return <><Stack.Screen options={{ title: screenTitle }} /><Loading /></>;
 
@@ -179,7 +180,7 @@ export default function TripBillScreen() {
     <ScrollView ref={scroll} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: screenTitle }} />
       <Card style={{ gap: 14 }}>
-        <Field label="รูปบิล (ไม่บังคับ)">
+        <Field label={t('bill.photo')}>
           <PhotoField
             uri={image?.uri ?? (savedImage || null)}
             onPick={onPhoto}
@@ -192,16 +193,16 @@ export default function TripBillScreen() {
               setSavedNote('');
             }}
             busy={reading}
-            emptyLabel="ถ่ายบิล"
+            emptyLabel={t('bill.takePhoto')}
           />
           {ocr && (ocr.items.length > 0 || ocr.amount > 0) ? (
             <View style={styles.preview}>
               {savedNote ? <Text style={styles.savedNote}>✓ {savedNote}</Text> : null}
-              <Text style={styles.hint}>อ่านจากรูป (อาจผิด ตรวจก่อนบันทึก) · แตะรายการที่จะหาร เลือกได้หลายรายการ</Text>
+              <Text style={styles.hint}>{t('bill.ocrHint')}</Text>
               {ocr.items.map((it, i) =>
                 used.includes(i) ? (
                   <View key={i} style={[styles.ocrRow, styles.ocrUsed]} accessibilityState={{ disabled: true }}>
-                    <Text style={[styles.chipText, { flex: 1 }]} numberOfLines={1}>✓ {it.name} (บันทึกแล้ว)</Text>
+                    <Text style={[styles.chipText, { flex: 1 }]} numberOfLines={1}>{t('bill.itemSaved', { name: it.name })}</Text>
                     <Text style={styles.share}>{money(it.amount)}</Text>
                   </View>
                 ) : (
@@ -213,36 +214,36 @@ export default function TripBillScreen() {
               )}
               {ocr.amount > 0 && used.length === 0 && (
                 <PressScale onPress={() => pickItem(-1)} style={[styles.ocrRow, picked.includes(-1) && styles.checkOn]} accessibilityRole="checkbox" accessibilityState={{ checked: picked.includes(-1) }}>
-                  <Text style={[styles.chipText, { flex: 1 }]}>{picked.includes(-1) ? '☑' : '☐'} ทั้งบิล (ยอดสุทธิ)</Text>
+                  <Text style={[styles.chipText, { flex: 1 }]}>{picked.includes(-1) ? '☑' : '☐'} {t('bill.wholeBill')}</Text>
                   <Text style={styles.share}>{money(ocr.amount)}</Text>
                 </PressScale>
               )}
             </View>
           ) : (
-            ocr && <Text style={styles.hint}>อ่านรายการจากรูปไม่ได้ กรอกเองได้เลย (รูปยังแนบไว้)</Text>
+            ocr && <Text style={styles.hint}>{t('bill.ocrFailed')}</Text>
           )}
         </Field>
-        <Field label="รายการ">
-          <TextInput value={title} onChangeText={setTitle} maxLength={80} placeholder="เช่น ที่พัก, ค่ารถ, ข้าวเย็น" placeholderTextColor={COLORS.muted} style={styles.input} />
+        <Field label={t('bill.item')}>
+          <TextInput value={title} onChangeText={setTitle} maxLength={80} placeholder={t('bill.itemPh')} placeholderTextColor={COLORS.muted} style={styles.input} />
         </Field>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Field label="ยอด (บาท)" style={{ flex: 1 }}>
+          <Field label={t('bill.amount')} style={{ flex: 1 }}>
             <TextInput
               value={amountText}
-              onChangeText={(t) => setAmountText(t.replace(/[^0-9.,]/g, ''))}
+              onChangeText={(v) => setAmountText(v.replace(/[^0-9.,]/g, ''))}
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor={COLORS.muted}
               style={[styles.input, { fontSize: 18 }]}
             />
           </Field>
-          <Field label="วันที่" style={{ flex: 1 }}>
+          <Field label={t('bill.date')} style={{ flex: 1 }}>
             <TextInput value={date} onChangeText={setDate} maxLength={10} style={styles.input} />
             {isValidDate(date) && <Text style={styles.hint}>{dateLabel(date)}</Text>}
           </Field>
         </View>
 
-        <Field label="ใครจ่าย">
+        <Field label={t('bill.payer')}>
           <View style={styles.chips}>
             {trip.members.map((m) => (
               <PressScale
@@ -250,7 +251,7 @@ export default function TripBillScreen() {
                 onPress={() => setPayer(m.id)}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: payer === m.id }}
-                accessibilityLabel={`${m.name} จ่าย`}
+                accessibilityLabel={t('bill.payerA11y', { name: m.name })}
                 style={[styles.chip, payer === m.id && styles.chipOn]}
               >
                 <Text style={[styles.chipText, payer === m.id && { color: '#fff' }]}>{m.name}</Text>
@@ -259,7 +260,7 @@ export default function TripBillScreen() {
           </View>
         </Field>
 
-        <Field label={`หารกับใคร (${chosen.length} คน)`}>
+        <Field label={t('bill.sharedWith', { n: chosen.length })}>
           <View style={styles.chips}>
             {trip.members.map((m) => {
               const on = chosen.includes(m.id);
@@ -273,12 +274,12 @@ export default function TripBillScreen() {
             })}
           </View>
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Text style={styles.link} onPress={() => setChosen(trip.members.map((m) => m.id))}>เลือกทุกคน</Text>
-            <Text style={styles.link} onPress={() => setChosen([])}>ล้าง</Text>
+            <Text style={styles.link} onPress={() => setChosen(trip.members.map((m) => m.id))}>{t('bill.everyone')}</Text>
+            <Text style={styles.link} onPress={() => setChosen([])}>{t('bill.clear')}</Text>
           </View>
         </Field>
 
-        <Field label="วิธีหาร">
+        <Field label={t('bill.how')}>
           <View style={styles.segment}>
             {MODES.map((m) => (
               <PressScale key={m.key} onPress={() => setMode(m.key)} containerStyle={{ flex: 1 }} style={[styles.segBtn, mode === m.key && styles.segOn]}>
@@ -299,7 +300,7 @@ export default function TripBillScreen() {
                   {mode !== 'equal' && (
                     <TextInput
                       value={values[m] ?? ''}
-                      onChangeText={(t) => setValues((v) => ({ ...v, [m]: t.replace(mode === 'ratio' ? /[^0-9]/g : /[^0-9.,]/g, '') }))}
+                      onChangeText={(text) => setValues((v) => ({ ...v, [m]: text.replace(mode === 'ratio' ? /[^0-9]/g : /[^0-9.,]/g, '') }))}
                       keyboardType={mode === 'ratio' ? 'number-pad' : 'decimal-pad'}
                       placeholder={mode === 'ratio' ? '1' : '0.00'}
                       placeholderTextColor={COLORS.muted}
@@ -312,26 +313,27 @@ export default function TripBillScreen() {
             })}
             {mode === 'amount' && amount > 0 && (
               <Text style={[styles.hint, { color: assigned === amount ? COLORS.in : COLORS.out, textAlign: 'right' }]}>
-                แบ่งแล้ว {bahtText(assigned)} / {bahtText(amount)} {assigned === amount ? '✓' : `(ขาด ${bahtText(amount - assigned)})`}
+                {t('bill.assigned', { assigned: bahtText(assigned), amount: bahtText(amount) })}{' '}
+                {assigned === amount ? '✓' : t('bill.short', { amount: bahtText(amount - assigned) })}
               </Text>
             )}
-            {mode === 'ratio' && <Text style={styles.hint}>ใส่สัดส่วนเป็นจำนวนเต็ม เช่น 2 : 1 : 1</Text>}
-            {preview && 'error' in preview && mode !== 'amount' && <Text style={{ color: COLORS.out }}>{preview.error}</Text>}
+            {mode === 'ratio' && <Text style={styles.hint}>{t('bill.ratioHint')}</Text>}
+            {preview && 'error' in preview && mode !== 'amount' && <Text style={{ color: COLORS.out }}>{t(preview.error.key, preview.error.params)}</Text>}
             {mode === 'equal' && amount > 0 && chosen.length > 1 && amount % chosen.length !== 0 && (
-              <Text style={styles.hint}>หารไม่ลงตัว: เศษสตางค์ให้ผู้จ่ายรับไป</Text>
+              <Text style={styles.hint}>{t('bill.leftover')}</Text>
             )}
           </View>
         )}
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button title={used.length ? 'เสร็จ' : 'ยกเลิก'} variant="outline" style={{ flex: 1 }} onPress={() => router.back()} />
-          <Button title={saving ? 'กำลังบันทึก...' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={saving || !!(preview && 'error' in preview)} />
+          <Button title={used.length ? t('bill.done') : t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={() => router.back()} />
+          <Button title={saving ? t('common.saving') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={saving || !!(preview && 'error' in preview)} />
         </View>
-        {!!billId && <Button title="ลบบิลนี้" variant="danger" onPress={remove} />}
+        {!!billId && <Button title={t('bill.delete')} variant="danger" onPress={remove} />}
       </Card>
       {preview && 'shares' in preview && (
         <Text style={[styles.hint, { textAlign: 'center' }]}>
-          รวม {money(amount / 100)} บาท · {trip.members.find((m) => m.id === payer)?.name} จ่ายไปก่อน
+          {t('bill.footer', { amount: money(amount / 100), payer: trip.members.find((m) => m.id === payer)?.name ?? '' })}
         </Text>
       )}
     </ScrollView>

@@ -5,6 +5,7 @@ import { api, Debt } from '@/api';
 import { AnimatedNumber, FadeIn } from '@/components/motion';
 import { Button, Card, ErrorBox, IconBubble, Loading } from '@/components/ui';
 import { CATEGORY_COLORS, COLORS, dateLabel, money } from '@/format';
+import { t } from '@/i18n';
 
 /** Who still owes the user, and whom the user still owes, from ให้ยืม/กู้ and their repayments by payee. */
 export default function DebtsScreen() {
@@ -43,37 +44,37 @@ export default function DebtsScreen() {
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Total label="คนอื่นค้างเรา" value={sum(owedToMe, 'owed_to_me')} color={CATEGORY_COLORS.lend} />
-        <Total label="เราค้างคนอื่น" value={sum(iOwe, 'i_owe')} color={CATEGORY_COLORS.borrow} />
+        <Total label={t('debts.owedToMe')} value={sum(owedToMe, 'owed_to_me')} color={CATEGORY_COLORS.lend} />
+        <Total label={t('debts.iOwe')} value={sum(iOwe, 'i_owe')} color={CATEGORY_COLORS.borrow} />
       </View>
       <Text style={styles.hint}>
-        {'คิดจากรายการ "ให้ยืม / กู้" และ "รับคืนเงินยืม / คืนเงินกู้" แยกตามช่อง ผู้รับ — ใส่ชื่อให้ตรงกันทุกครั้ง'}
+        {t('debts.hint')}
       </Text>
 
-      <Section title="🤝 คนที่ยืมเราไป" empty="ไม่มีใครค้างเงินเรา">
+      <Section title={t('debts.lentTitle')} empty={t('debts.lentEmpty')}>
         {owedToMe.map((d, i) => (
           <FadeIn key={`l${d.person}`} delay={i * 50}>
-            <DebtRow d={d} amount={d.owed_to_me} detail={`ให้ยืม ${money(d.lent)} · คืนแล้ว ${money(d.returned)}`} color={CATEGORY_COLORS.lend}
-              action="ได้คืนแล้ว" onAction={() => settle(d, 'lend_return')} />
+            <DebtRow d={d} amount={d.owed_to_me} detail={t('debts.lentDetail', { lent: money(d.lent), back: money(d.returned) })} color={CATEGORY_COLORS.lend}
+              action={t('debts.gotBack')} onAction={() => settle(d, 'lend_return')} />
           </FadeIn>
         ))}
       </Section>
 
-      <Section title="🏦 เรายืมใครอยู่" empty="ไม่มีหนี้ค้าง">
+      <Section title={t('debts.borrowTitle')} empty={t('debts.borrowEmpty')}>
         {iOwe.map((d, i) => (
           <FadeIn key={`b${d.person}`} delay={i * 50}>
-            <DebtRow d={d} amount={d.i_owe} detail={`กู้ ${money(d.borrowed)} · คืนแล้ว ${money(d.repaid)}`} color={CATEGORY_COLORS.borrow}
-              action="คืนแล้ว" onAction={() => settle(d, 'borrow_repay')} />
+            <DebtRow d={d} amount={d.i_owe} detail={t('debts.borrowDetail', { borrowed: money(d.borrowed), back: money(d.repaid) })} color={CATEGORY_COLORS.borrow}
+              action={t('debts.repaid')} onAction={() => settle(d, 'borrow_repay')} />
           </FadeIn>
         ))}
       </Section>
 
       {settled.length > 0 && (
-        <Section title="✅ เคลียร์แล้ว">
+        <Section title={t('debts.settled')}>
           {settled.map((d) => (
             <View key={`s${d.person}`} style={styles.settled}>
-              <Text style={{ color: COLORS.text }}>{d.person || '(ไม่ระบุชื่อ)'}</Text>
-              <Text style={styles.hint}>ล่าสุด {dateLabel(d.last_date)}</Text>
+              <Text style={{ color: COLORS.text }}>{d.person || t('debts.noName')}</Text>
+              <Text style={styles.hint}>{t('debts.last', { date: dateLabel(d.last_date) })}</Text>
             </View>
           ))}
         </Section>
@@ -108,9 +109,9 @@ function DebtRow({ d, amount, detail, color, action, onAction }: {
     <Card style={styles.row}>
       <IconBubble icon={(d.person || '?').slice(0, 1)} tint={color + '22'} />
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={styles.name}>{d.person || '(ไม่ระบุชื่อ)'}</Text>
+        <Text style={styles.name}>{d.person || t('debts.noName')}</Text>
         <Text style={styles.hint}>{detail}</Text>
-        <Text style={styles.hint}>ล่าสุด {dateLabel(d.last_date)}</Text>
+        <Text style={styles.hint}>{t('debts.last', { date: dateLabel(d.last_date) })}</Text>
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
         <Text style={{ fontSize: 16, fontWeight: '800', color }}>{money(amount)}</Text>

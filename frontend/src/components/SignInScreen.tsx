@@ -9,6 +9,8 @@ import { useAuth } from '../auth';
 import { Firefly, Point } from './Firefly';
 import { GoogleButton } from './GoogleButton';
 import { FadeIn, PressScale, Shake, ShakeHandle } from './motion';
+import { dateTimeLabel } from '../format';
+import { t } from '../i18n';
 
 type Mode = 'login' | 'signup' | 'forgot';
 type FieldKey = 'name' | 'email' | 'username' | 'password' | 'password2';
@@ -70,9 +72,9 @@ export function SignInScreen() {
       setError(msg);
       shaker.current?.shake();
     };
-    if (!values.username.trim() || !values.password) return fail('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
-    if (signup && !EMAIL_RE.test(values.email.trim())) return fail('กรุณากรอกอีเมลให้ถูกต้อง (ใช้ตอนลืมรหัสผ่าน)');
-    if (signup && values.password !== values.password2) return fail('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+    if (!values.username.trim() || !values.password) return fail(t('signIn.fillUserPw'));
+    if (signup && !EMAIL_RE.test(values.email.trim())) return fail(t('signIn.badEmailSignup'));
+    if (signup && values.password !== values.password2) return fail(t('signIn.pwMismatch'));
     setBusy(true);
     try {
       if (signup) await signUp(values.name, values.email.trim(), values.username, values.password);
@@ -145,16 +147,16 @@ export function SignInScreen() {
               <>
               <Segment mode={mode} onChange={switchMode} />
 
-              {signup && field('name', 'ชื่อที่แสดง', '😊', { hint: 'เช่น เอก', auto: 'name', appear: true })}
-              {signup && field('email', 'อีเมล (ใช้ตอนลืมรหัสผ่าน)', '✉️', { hint: 'you@example.com', auto: 'email', appear: true })}
-              {field('username', 'ชื่อผู้ใช้', '👤', { hint: signup ? 'a-z 0-9 . _ - อย่างน้อย 3 ตัว' : undefined, auto: 'username' })}
-              {field('password', 'รหัสผ่าน', '🔒', {
+              {signup && field('name', t('signIn.displayName'), '😊', { hint: t('signIn.displayNameHint'), auto: 'name', appear: true })}
+              {signup && field('email', t('signIn.emailForgot'), '✉️', { hint: 'you@example.com', auto: 'email', appear: true })}
+              {field('username', t('signIn.username'), '👤', { hint: signup ? t('signIn.usernameHint') : undefined, auto: 'username' })}
+              {field('password', t('signIn.password'), '🔒', {
                 secret: true,
-                hint: signup ? 'อย่างน้อย 8 ตัวอักษร' : undefined,
+                hint: signup ? t('signIn.passwordHint') : undefined,
                 auto: signup ? 'new-password' : 'current-password',
                 last: !signup,
               })}
-              {signup && field('password2', 'ยืนยันรหัสผ่าน', '🔁', { secret: true, auto: 'new-password', last: true, appear: true })}
+              {signup && field('password2', t('signIn.password2'), '🔁', { secret: true, auto: 'new-password', last: true, appear: true })}
 
               {!!error && (
                 <FadeIn key={error} from={-6}>
@@ -163,12 +165,12 @@ export function SignInScreen() {
               )}
 
               <View onLayout={measure('button')}>
-                <SubmitButton title={signup ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ'} busy={busy} onPress={submit} />
+                <SubmitButton title={signup ? t('common.signUp') : t('common.signIn')} busy={busy} onPress={submit} />
               </View>
 
               <View style={styles.divider}>
                 <View style={styles.line} />
-                <Text style={styles.dividerText}>หรือ</Text>
+                <Text style={styles.dividerText}>{t('signIn.or')}</Text>
                 <View style={styles.line} />
               </View>
               <GoogleButton
@@ -183,23 +185,23 @@ export function SignInScreen() {
                 }}
               />
               <Pressable onPress={() => switchMode('forgot')} hitSlop={8}>
-                <Text style={[styles.link, { textAlign: 'center' }]}>ลืมรหัสผ่าน?</Text>
+                <Text style={[styles.link, { textAlign: 'center' }]}>{t('signIn.forgotLink')}</Text>
               </Pressable>
               </>
               )}
             </View>
           </Shake>
         </FadeIn>
-        {signup && <Text style={styles.note}>หลังสมัครจะให้ตั้ง PIN 6 หลัก ไว้ปลดล็อกแอปครั้งต่อไป</Text>}
+        {signup && <Text style={styles.note}>{t('signIn.pinNote')}</Text>}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const HEADINGS: Record<Mode, [string, string]> = {
-  login: ['ยินดีต้อนรับกลับมา', 'เข้าสู่ระบบเพื่อดูยอดเงินของคุณ'],
-  signup: ['เริ่มจดรายรับรายจ่าย', 'สมัครฟรี ใช้ได้ทันที'],
-  forgot: ['ลืมรหัสผ่าน', 'รับรหัสยืนยันทางอีเมลที่ใช้สมัคร'],
+  login: [t('signIn.loginTitle'), t('signIn.loginSub')],
+  signup: [t('signIn.signupTitle'), t('signIn.signupSub')],
+  forgot: [t('signIn.forgotTitle'), t('signIn.forgotSub')],
 };
 
 const mmss = (ms: number) => {
@@ -234,7 +236,7 @@ function ForgotPassword({ onBack, onDone }: { onBack: () => void; onDone: (usern
   const send = async () => {
     if (busy) return;
     setError(null);
-    if (!EMAIL_RE.test(email.trim())) return setError('กรุณากรอกอีเมลให้ถูกต้อง');
+    if (!EMAIL_RE.test(email.trim())) return setError(t('signIn.badEmail'));
     setBusy(true);
     try {
       const r = await api.auth.forgot(email.trim());
@@ -255,8 +257,8 @@ function ForgotPassword({ onBack, onDone }: { onBack: () => void; onDone: (usern
   const verify = async () => {
     if (busy) return;
     setError(null);
-    if (!/^\d{6}$/.test(code)) return setError('กรุณากรอกรหัส 6 หลัก');
-    if (now > deadline) return setError('รหัสหมดอายุแล้ว กรุณาขอรหัสใหม่');
+    if (!/^\d{6}$/.test(code)) return setError(t('signIn.codeFormat'));
+    if (now > deadline) return setError(t('signIn.codeExpired'));
     setBusy(true);
     try {
       setResult(await api.auth.verifyForgot(email.trim(), code));
@@ -286,17 +288,17 @@ function ForgotPassword({ onBack, onDone }: { onBack: () => void; onDone: (usern
     const until = new Date(result.expires_at);
     return (
       <FadeIn style={{ gap: 14 }}>
-        <Text style={styles.forgotText}>รหัสผ่านสำรองของ</Text>
+        <Text style={styles.forgotText}>{t('signIn.tempPwOf')}</Text>
         <Text style={styles.username}>@{result.username}</Text>
-        <Pressable onPress={copy} style={styles.tempBox} accessibilityLabel="คัดลอกรหัสผ่านสำรอง">
+        <Pressable onPress={copy} style={styles.tempBox} accessibilityLabel={t('signIn.copyTemp')}>
           <Text selectable style={styles.tempText}>{result.temp_password}</Text>
-          {Platform.OS === 'web' && <Text style={styles.tempHint}>{copied ? '✓ คัดลอกแล้ว' : 'แตะเพื่อคัดลอก'}</Text>}
+          {Platform.OS === 'web' && <Text style={styles.tempHint}>{copied ? t('signIn.copied') : t('signIn.tapToCopy')}</Text>}
         </Pressable>
         <Text style={styles.forgotText}>
-          ใช้ได้ถึง {until.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} (24 ชั่วโมง){'\n'}
-          เข้าสู่ระบบด้วยรหัสนี้แล้วต้องตั้งรหัสผ่านใหม่ทันที หลังจากนั้นรหัสสำรองจะใช้ไม่ได้
+          {t('signIn.validUntil', { until: dateTimeLabel(until) })}{'\n'}
+          {t('signIn.tempNote')}
         </Text>
-        <SubmitButton title="เข้าสู่ระบบด้วยรหัสสำรอง" busy={false} onPress={() => onDone(result.username, result.temp_password)} />
+        <SubmitButton title={t('signIn.withTemp')} busy={false} onPress={() => onDone(result.username, result.temp_password)} />
       </FadeIn>
     );
   }
@@ -305,9 +307,9 @@ function ForgotPassword({ onBack, onDone }: { onBack: () => void; onDone: (usern
     <View style={{ gap: 14 }}>
       {step === 'email' ? (
         <>
-          <Text style={styles.forgotText}>กรอกอีเมลที่ใช้สมัคร เราจะส่งรหัสยืนยัน 6 หลักไปให้ (ใช้ได้ 3 นาที)</Text>
+          <Text style={styles.forgotText}>{t('signIn.forgotIntro')}</Text>
           <AuthField
-            label="อีเมล"
+            label={t('signIn.email')}
             icon="✉️"
             hint="you@example.com"
             value={email}
@@ -320,16 +322,16 @@ function ForgotPassword({ onBack, onDone }: { onBack: () => void; onDone: (usern
             onSubmitEditing={send}
           />
           {errorLine}
-          <SubmitButton title="ส่งรหัสยืนยัน" busy={busy} onPress={send} />
+          <SubmitButton title={t('signIn.sendCode')} busy={busy} onPress={send} />
         </>
       ) : (
         <>
           <Text style={styles.forgotText}>{message}</Text>
           <Text style={styles.forgotText}>
-            อีเมล: <Text style={{ color: '#fff', fontWeight: '700' }}>{email.trim()}</Text>
+            {t('signIn.email')}: <Text style={{ color: '#fff', fontWeight: '700' }}>{email.trim()}</Text>
           </Text>
           <AuthField
-            label="รหัสยืนยัน 6 หลัก"
+            label={t('signIn.code')}
             icon="🔢"
             value={code}
             onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
@@ -341,19 +343,19 @@ function ForgotPassword({ onBack, onDone }: { onBack: () => void; onDone: (usern
             onSubmitEditing={verify}
           />
           <Text style={[styles.forgotText, now > deadline && { color: '#fca5a5' }]}>
-            {now > deadline ? 'รหัสหมดอายุแล้ว — กดขอรหัสใหม่' : `รหัสหมดอายุใน ${mmss(deadline - now)}`}
+            {now > deadline ? t('signIn.codeExpiredResend') : t('signIn.codeExpiresIn', { time: mmss(deadline - now) })}
           </Text>
           {errorLine}
-          <SubmitButton title="ยืนยันรหัส" busy={busy} onPress={verify} />
+          <SubmitButton title={t('signIn.verify')} busy={busy} onPress={verify} />
           <Pressable onPress={send} disabled={now < resendAt || busy} hitSlop={8}>
             <Text style={[styles.link, { textAlign: 'center' }, now < resendAt && { opacity: 0.45 }]}>
-              {now < resendAt ? `ขอรหัสใหม่ได้ใน ${mmss(resendAt - now)}` : 'ขอรหัสใหม่'}
+              {now < resendAt ? t('signIn.resendIn', { time: mmss(resendAt - now) }) : t('signIn.resend')}
             </Text>
           </Pressable>
         </>
       )}
       <Pressable onPress={onBack} hitSlop={8}>
-        <Text style={styles.switch}>← กลับไปเข้าสู่ระบบ</Text>
+        <Text style={styles.switch}>{t('signIn.back')}</Text>
       </Pressable>
     </View>
   );
@@ -422,7 +424,7 @@ function AuthField(props: {
           scaleTo={0.8}
           containerStyle={styles.eye}
           style={styles.eyeInner}
-          accessibilityLabel={props.eyeOpen ? 'ซ่อนรหัสผ่าน' : 'ดูรหัสผ่าน'}
+          accessibilityLabel={props.eyeOpen ? t('signIn.hidePw') : t('signIn.showPw')}
         >
           <Text style={{ fontSize: 17 }}>{props.eyeOpen ? '🙈' : '👁️'}</Text>
         </PressScale>
@@ -447,7 +449,7 @@ function Segment({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }
       )}
       {(['login', 'signup'] as const).map((m) => (
         <Pressable key={m} onPress={() => onChange(m)} style={styles.segBtn}>
-          <Text style={[styles.segText, mode === m && { color: '#2b1d16' }]}>{m === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}</Text>
+          <Text style={[styles.segText, mode === m && { color: '#2b1d16' }]}>{m === 'login' ? t('common.signIn') : t('common.signUp')}</Text>
         </Pressable>
       ))}
     </View>

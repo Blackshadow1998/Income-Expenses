@@ -10,7 +10,7 @@ export function loadThemePref(): string | null {
 }
 
 /** Saves the choice and reloads so every stylesheet is rebuilt with the new palette. */
-export function saveThemePref(pref: string) {
+export function saveThemePref(pref: string, title: string, message: string) {
   try {
     localStorage.setItem(KEY, pref);
   } catch {}

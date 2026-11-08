@@ -4,7 +4,8 @@ import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AccountsSummary, api, Category, Slip } from '@/api';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
-import { CATEGORY_COLORS, COLORS, currentMonth, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
+import { accountLabel, CATEGORY_COLORS, COLORS, currentMonth, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
+import { t, tCode } from '@/i18n';
 import { getLastAccountId, setLastAccountId, setPendingMonth } from '@/state';
 
 export default function TransactionScreen() {
@@ -50,7 +51,7 @@ export default function TransactionScreen() {
         editId ? api.get(editId) : Promise.resolve(null),
         slipId ? api.getSlip(slipId) : Promise.resolve(null),
       ]);
-      if (sl && sl.status !== 'pending') throw new Error('สลิปนี้ถูกคอนเฟิร์มไปแล้ว');
+      if (sl && sl.status !== 'pending') throw new Error(t('slip.alreadyConfirmed'));
       if (sl?.suggestion?.action === 'transfer' && params.as !== 'transaction') {
         router.replace({ pathname: '/transfer', params: { slipId: String(sl.id) } });
         return;
@@ -139,10 +140,10 @@ export default function TransactionScreen() {
 
   const save = async () => {
     const errs: Record<string, string> = {};
-    if (!isValidDate(date)) errs.date = 'รูปแบบวันที่ต้องเป็น ปปปป-ดด-วว (ค.ศ.) เช่น 2026-11-06';
-    if (!accountId) errs.account = 'กรุณาเลือกบัญชี';
-    if (!categoryId) errs.category = 'กรุณาเลือกหมวดหมู่';
-    if (amount === null || amount <= 0) errs.amount = 'กรุณากรอกจำนวนเงินที่มากกว่า 0';
+    if (!isValidDate(date)) errs.date = t('form.dateFormat');
+    if (!accountId) errs.account = t('txn.pickAccount');
+    if (!categoryId) errs.category = t('txn.pickCategory');
+    if (amount === null || amount <= 0) errs.amount = t('form.amountPositive');
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
@@ -171,7 +172,7 @@ export default function TransactionScreen() {
     }
   };
 
-  const title = isEdit ? 'แก้ไขรายการ' : slip || slipId ? 'คอนเฟิร์มสลิป' : 'เพิ่มรายการ';
+  const title = isEdit ? t('txn.edit') : slip || slipId ? t('txn.confirmSlip') : t('txn.add');
   if (loading) return (<><Stack.Screen options={{ title }} /><Loading /></>);
   if (loadError)
     return (
@@ -190,45 +191,45 @@ export default function TransactionScreen() {
       {/* Read-only balance — shown outside the form, cannot be edited */}
       <Card style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>
-          {account ? `เงินคงเหลือ: ${account.label}` : 'เงินคงเหลือรวมทุกบัญชี'}
-          {isEdit ? ' (ไม่รวมรายการนี้)' : ''}
+          {account ? t('txn.balanceOf', { name: accountLabel(account) }) : t('txn.balanceAll')}
+          {isEdit ? t('txn.excludingThis') : ''}
         </Text>
-        <Text style={styles.balanceValue}>{money(balance)} บาท</Text>
-        {account && <Text style={styles.balanceSub}>ยอดรวมทุกบัญชี {money(total)} บาท</Text>}
+        <Text style={styles.balanceValue}>{t('money.bahtValue', { amount: money(balance) })}</Text>
+        {account && <Text style={styles.balanceSub}>{t('txn.totalAll', { amount: money(total) })}</Text>}
       </Card>
 
       {slip && (
         <View style={styles.slipCard}>
-          <Pressable onPress={() => Linking.openURL(api.slipImageUrl(slip))} accessibilityLabel="ดูรูปสลิป">
+          <Pressable onPress={() => Linking.openURL(api.slipImageUrl(slip))} accessibilityLabel={t('slip.viewImage')}>
             <Image source={{ uri: api.slipImageUrl(slip) }} style={styles.slipThumb} resizeMode="cover" />
           </Pressable>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.slipTitle}>🧾 ข้อมูลจากสลิป (ตรวจสอบก่อนบันทึก)</Text>
-            <SlipLine label="จำนวนเงิน" value={slip.amount > 0 ? `${money(slip.amount)} บาท` : 'อ่านไม่ได้ — กรุณากรอกเอง'} />
-            <SlipLine label="บัญชีโอน" value={slip.from_name || '-'} />
-            <SlipLine label="บัญชีรับ" value={slip.to_name || '-'} />
-            <SlipLine label="วันที่" value={slip.date_found ? dateLabel(slip.date) : 'อ่านไม่ได้ — ใช้วันที่อัปโหลด'} />
-            {!!slip.ref && <SlipLine label="เลขที่รายการ" value={slip.ref} />}
-            {!!slip.bank_name && <SlipLine label="ธนาคาร" value={slip.bank_name} />}
-            {!!slip.to_bank_name && <SlipLine label="ธนาคารปลายทาง" value={slip.to_bank_name} />}
+            <Text style={styles.slipTitle}>{t('slip.fromSlipTitle')}</Text>
+            <SlipLine label={t('slip.amount')} value={slip.amount > 0 ? t('money.bahtValue', { amount: money(slip.amount) }) : t('slip.amountUnreadable')} />
+            <SlipLine label={t('slip.fromAccount')} value={slip.from_name || '-'} />
+            <SlipLine label={t('slip.toAccount')} value={slip.to_name || '-'} />
+            <SlipLine label={t('slip.date')} value={slip.date_found ? dateLabel(slip.date) : t('slip.dateUnreadable')} />
+            {!!slip.ref && <SlipLine label={t('slip.ref')} value={slip.ref} />}
+            {!!slip.bank_name && <SlipLine label={t('account.bank')} value={slip.bank_name} />}
+            {!!slip.to_bank_name && <SlipLine label={t('slip.toBank')} value={slip.to_bank_name} />}
             {slip.suggestion?.action === 'transaction' && (
-              <Text style={styles.ruleBadge}>📋 ใช้เงื่อนไข &quot;{slip.suggestion.rule_name}&quot; — ตรวจสอบแล้วกดคอนเฟิร์ม</Text>
+              <Text style={styles.ruleBadge}>{t('slip.ruleCheck', { name: slip.suggestion.rule_name })}</Text>
             )}
             <Pressable onPress={() => router.replace({ pathname: '/transfer', params: { slipId: String(slip.id) } })}>
-              <Text style={{ color: COLORS.primary, fontSize: 12 }}>🔁 นี่คือโอนระหว่างบัญชีตัวเอง</Text>
+              <Text style={{ color: COLORS.primary, fontSize: 12 }}>{t('slip.isTransfer')}</Text>
             </Pressable>
             <Pressable onPress={() => setShowOcr((v) => !v)}>
-              <Text style={{ color: COLORS.primary, fontSize: 12 }}>{showOcr ? '▲ ซ่อนข้อความที่อ่านได้' : '▼ ดูข้อความที่อ่านได้ทั้งหมด'}</Text>
+              <Text style={{ color: COLORS.primary, fontSize: 12 }}>{showOcr ? t('slip.hideOcr') : t('slip.showOcr')}</Text>
             </Pressable>
-            {showOcr && <Text style={styles.ocrText} selectable>{slip.ocr_text.split('\n===== 2x =====\n')[0] || '(ไม่มีข้อความ)'}</Text>}
+            {showOcr && <Text style={styles.ocrText} selectable>{slip.ocr_text.split('\n===== 2x =====\n')[0] || t('slip.noOcr')}</Text>}
           </View>
         </View>
       )}
 
       <Card style={{ gap: 16 }}>
-        <Field label="บัญชี" error={errors.account}>
+        <Field label={t('txn.account')} error={errors.account}>
           {accounts.length === 0 ? (
-            <Text style={styles.hint}>ยังไม่มีบัญชี กรุณาเพิ่มบัญชีก่อนบันทึกรายการ</Text>
+            <Text style={styles.hint}>{t('txn.noAccounts')}</Text>
           ) : (
             <View style={styles.pickerWrap}>
               <Picker
@@ -236,11 +237,11 @@ export default function TransactionScreen() {
                 onValueChange={(v) => setAccountId(Number(v) || null)}
                 style={styles.picker}
               >
-                <Picker.Item label="-- เลือกบัญชี --" value={0} color={COLORS.muted} />
+                <Picker.Item label={t('form.pickAccount')} value={0} color={COLORS.muted} />
                 {accounts.map((a) => (
                   <Picker.Item
                     key={a.id}
-                    label={`${a.label}  (${money(a.balance - effectOn(a.id))})`}
+                    label={`${accountLabel(a)}  (${money(a.balance - effectOn(a.id))})`}
                     value={a.id}
                   />
                 ))}
@@ -248,11 +249,11 @@ export default function TransactionScreen() {
             </View>
           )}
           <View style={{ alignSelf: 'flex-start' }}>
-            <Button title="+ เพิ่มบัญชีใหม่" variant="ghost" small onPress={() => router.push('/account')} />
+            <Button title={t('txn.addAccount')} variant="ghost" small onPress={() => router.push('/account')} />
           </View>
         </Field>
 
-        <Field label="วันเดือนปี" error={errors.date}>
+        <Field label={t('form.date')} error={errors.date}>
           <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
             <Button title="◀" variant="outline" small onPress={() => shiftDay(-1)} />
             <TextInput
@@ -263,12 +264,12 @@ export default function TransactionScreen() {
               style={[styles.input, { flex: 1, textAlign: 'center' }]}
             />
             <Button title="▶" variant="outline" small onPress={() => shiftDay(1)} />
-            <Button title="วันนี้" variant="ghost" small onPress={() => setDate(toISODate(new Date()))} />
+            <Button title={t('form.today')} variant="ghost" small onPress={() => setDate(toISODate(new Date()))} />
           </View>
           {isValidDate(date) && <Text style={styles.hint}>{dateLabel(date)}</Text>}
         </Field>
 
-        <Field label="หมวดหมู่" error={errors.category}>
+        <Field label={t('txn.category')} error={errors.category}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {categories.map((c) => {
               const active = c.id === categoryId;
@@ -280,7 +281,7 @@ export default function TransactionScreen() {
                   style={[styles.catBtn, { borderColor: color }, active && { backgroundColor: color }]}
                 >
                   <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>
-                    {c.name} ({c.direction > 0 ? 'เงินเข้า' : 'เงินออก'})
+                    {tCode('category', c.code, c.name)} ({c.direction > 0 ? t('money.in') : t('money.out')})
                   </Text>
                 </Pressable>
               );
@@ -289,14 +290,14 @@ export default function TransactionScreen() {
         </Field>
 
         {subcategories.length > 0 && (
-          <Field label="รายการ">
+          <Field label={t('txn.item')}>
             <View style={styles.pickerWrap}>
               <Picker
                 selectedValue={subcategoryId ?? 0}
                 onValueChange={(v) => setSubcategoryId(Number(v) || null)}
                 style={styles.picker}
               >
-                <Picker.Item label="-- ไม่ระบุ --" value={0} color={COLORS.muted} />
+                <Picker.Item label={t('txn.none')} value={0} color={COLORS.muted} />
                 {subcategories.map((s) => (
                   <Picker.Item key={s.id} label={s.name} value={s.id} />
                 ))}
@@ -305,11 +306,11 @@ export default function TransactionScreen() {
           </Field>
         )}
 
-        <Field label="ผู้รับ (ไม่บังคับ)">
+        <Field label={t('txn.payee')}>
           <TextInput
             value={payee}
             onChangeText={setPayee}
-            placeholder="เช่น ร้านอาหาร, ชื่อเพื่อน, บริษัท"
+            placeholder={t('txn.payeeHint')}
             style={styles.input}
           />
           {payeeSuggestions(knownPayees, payee).length > 0 && (
@@ -323,32 +324,32 @@ export default function TransactionScreen() {
           )}
         </Field>
 
-        <Field label="จำนวนเงิน (บาท)" error={errors.amount}>
+        <Field label={t('money.amountBaht')} error={errors.amount}>
           <TextInput
             value={amountText}
-            onChangeText={(t) => setAmountText(t.replace(/[^0-9.,]/g, ''))}
+            onChangeText={(v) => setAmountText(v.replace(/[^0-9.,]/g, ''))}
             placeholder="0.00"
             keyboardType="decimal-pad"
             style={[styles.input, { fontSize: 18 }]}
           />
         </Field>
 
-        <Field label={account ? 'เงินเหลือในบัญชีหลังบันทึก' : 'เงินเหลือหลังบันทึก'}>
+        <Field label={account ? t('txn.remainingAccount') : t('txn.remaining')}>
           <View style={styles.readonly}>
             <Text style={{ color: COLORS.muted }}>
               {money(balance)} {sign} {money(amount ?? 0)} =
             </Text>
             <Text style={{ fontSize: 18, fontWeight: '700', color: remaining >= 0 ? COLORS.in : COLORS.out }}>
-              {money(remaining)} บาท
+              {t('money.bahtValue', { amount: money(remaining) })}
             </Text>
           </View>
         </Field>
 
-        <Field label="รายละเอียดเพิ่มเติม">
+        <Field label={t('form.note')}>
           <TextInput
             value={note}
             onChangeText={setNote}
-            placeholder="เช่น ค่าอาหารกลางวัน, เงินเดือน ฯลฯ"
+            placeholder={t('txn.noteHint')}
             multiline
             numberOfLines={3}
             style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
@@ -357,10 +358,10 @@ export default function TransactionScreen() {
 
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Button title="ยกเลิก" variant="outline" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
+            <Button title={t('common.cancel')} variant="outline" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
           </View>
           <View style={{ flex: 1 }}>
-            <Button title={saving ? 'กำลังบันทึก...' : slip ? 'คอนเฟิร์ม' : 'บันทึก'} onPress={save} disabled={saving} />
+            <Button title={saving ? t('common.saving') : slip ? t('slip.confirm') : t('common.save')} onPress={save} disabled={saving} />
           </View>
         </View>
       </Card>

@@ -5,7 +5,8 @@ import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, Vie
 import { Account, api, Slip } from '@/api';
 import { PressScale } from '@/components/motion';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
-import { COLORS, confirmAsync, currentMonth, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
+import { accountLabel, COLORS, confirmAsync, currentMonth, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
+import { t } from '@/i18n';
 import { getLastAccountId, setPendingMonth } from '@/state';
 
 /** Add or edit a transfer between two of the user's own accounts (or confirm a slip as one). */
@@ -41,7 +42,7 @@ export default function TransferScreen() {
         editId ? api.getTransfer(editId) : Promise.resolve(null),
         slipId ? api.getSlip(slipId) : Promise.resolve(null),
       ]);
-      if (sl && sl.status !== 'pending') throw new Error('สลิปนี้ถูกคอนเฟิร์มไปแล้ว');
+      if (sl && sl.status !== 'pending') throw new Error(t('slip.alreadyConfirmed'));
       setAccounts(accs.accounts);
       setSlip(sl);
       if (tr) {
@@ -100,11 +101,11 @@ export default function TransferScreen() {
 
   const save = async () => {
     const errs: Record<string, string> = {};
-    if (!fromId) errs.from = 'กรุณาเลือกบัญชีต้นทาง';
-    if (!toId) errs.to = 'กรุณาเลือกบัญชีปลายทาง';
-    if (fromId && fromId === toId) errs.to = 'บัญชีปลายทางต้องไม่ใช่บัญชีเดียวกับต้นทาง';
-    if (!isValidDate(date)) errs.date = 'รูปแบบวันที่ต้องเป็น ปปปป-ดด-วว (ค.ศ.) เช่น 2026-11-06';
-    if (amount === null || amount <= 0) errs.amount = 'กรุณากรอกจำนวนเงินที่มากกว่า 0';
+    if (!fromId) errs.from = t('transfer.pickFrom');
+    if (!toId) errs.to = t('transfer.pickTo');
+    if (fromId && fromId === toId) errs.to = t('transfer.sameAccount');
+    if (!isValidDate(date)) errs.date = t('form.dateFormat');
+    if (amount === null || amount <= 0) errs.amount = t('form.amountPositive');
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
@@ -127,7 +128,7 @@ export default function TransferScreen() {
   };
 
   const remove = async () => {
-    if (!editId || !(await confirmAsync('ลบรายการโอน', `ต้องการลบรายการโอน ${money(amount ?? 0)} บาท ใช่หรือไม่?`))) return;
+    if (!editId || !(await confirmAsync(t('transfer.deleteTitle'), t('transfer.deleteBody', { amount: money(amount ?? 0) })))) return;
     try {
       await api.removeTransfer(editId);
       if (router.canGoBack()) router.back();
@@ -137,7 +138,7 @@ export default function TransferScreen() {
     }
   };
 
-  const title = editId ? 'แก้ไขการโอน' : slipId ? 'คอนเฟิร์มสลิป (โอนระหว่างบัญชี)' : 'โอนระหว่างบัญชี';
+  const title = editId ? t('transfer.edit') : slipId ? t('transfer.confirmSlip') : t('transfer.title');
   if (loading)
     return (
       <>
@@ -159,8 +160,8 @@ export default function TransferScreen() {
         <Stack.Screen options={{ title }} />
         <Card style={{ alignItems: 'center', gap: 10, paddingVertical: 24 }}>
           <Text style={{ fontSize: 32 }}>⇄</Text>
-          <Text style={{ color: COLORS.muted, textAlign: 'center' }}>ต้องมีอย่างน้อย 2 บัญชีถึงจะโอนระหว่างบัญชีได้</Text>
-          <Button title="เพิ่มบัญชี" icon="＋" onPress={() => router.push('/account')} />
+          <Text style={{ color: COLORS.muted, textAlign: 'center' }}>{t('transfer.needTwo')}</Text>
+          <Button title={t('accounts.add')} icon="＋" onPress={() => router.push('/account')} />
         </Card>
       </View>
     );
@@ -168,9 +169,9 @@ export default function TransferScreen() {
   const picker = (value: number | null, onChange: (id: number | null) => void) => (
     <View style={styles.pickerWrap}>
       <Picker selectedValue={value ?? 0} onValueChange={(v) => onChange(Number(v) || null)} style={styles.picker}>
-        <Picker.Item label="-- เลือกบัญชี --" value={0} color={COLORS.muted} />
+        <Picker.Item label={t('form.pickAccount')} value={0} color={COLORS.muted} />
         {accounts.map((a) => (
-          <Picker.Item key={a.id} label={`${a.label}  (${money(before(a.id))})`} value={a.id} />
+          <Picker.Item key={a.id} label={`${accountLabel(a)}  (${money(before(a.id))})`} value={a.id} />
         ))}
       </Picker>
     </View>
@@ -181,24 +182,24 @@ export default function TransferScreen() {
       <Stack.Screen options={{ title }} />
       {slip && (
         <View style={styles.slipCard}>
-          <Pressable onPress={() => Linking.openURL(api.slipImageUrl(slip))} accessibilityLabel="ดูรูปสลิป">
+          <Pressable onPress={() => Linking.openURL(api.slipImageUrl(slip))} accessibilityLabel={t('slip.viewImage')}>
             <Image source={{ uri: api.slipImageUrl(slip) }} style={styles.slipThumb} resizeMode="cover" />
           </Pressable>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.slipTitle}>🧾 ข้อมูลจากสลิป (ตรวจสอบก่อนบันทึก)</Text>
-            <Text style={styles.hint}>จาก {slip.from_name || '-'}{slip.bank_name ? ` · ${slip.bank_name}` : ''}</Text>
-            <Text style={styles.hint}>ถึง {slip.to_name || '-'}{slip.to_bank_name ? ` · ${slip.to_bank_name}` : ''}</Text>
-            {!!slip.suggestion && <Text style={styles.ruleBadge}>📋 ใช้เงื่อนไข &quot;{slip.suggestion.rule_name}&quot;</Text>}
+            <Text style={styles.slipTitle}>{t('slip.fromSlipTitle')}</Text>
+            <Text style={styles.hint}>{t('slip.fromLine', { name: slip.from_name || '-' })}{slip.bank_name ? ` · ${slip.bank_name}` : ''}</Text>
+            <Text style={styles.hint}>{t('slip.toLine', { name: slip.to_name || '-' })}{slip.to_bank_name ? ` · ${slip.to_bank_name}` : ''}</Text>
+            {!!slip.suggestion && <Text style={styles.ruleBadge}>{t('slip.ruleUsed', { name: slip.suggestion.rule_name })}</Text>}
             <Pressable onPress={() => router.replace({ pathname: '/transaction', params: { slipId: String(slip.id), as: 'transaction' } })}>
-              <Text style={{ color: COLORS.primary, fontSize: 12 }}>🧾 ไม่ใช่ — บันทึกเป็นรายการรับ/จ่ายแทน</Text>
+              <Text style={{ color: COLORS.primary, fontSize: 12 }}>{t('transfer.notTransfer')}</Text>
             </Pressable>
           </View>
         </View>
       )}
       <Card style={{ gap: 16 }}>
-        <Text style={styles.hint}>ย้ายเงินระหว่างบัญชีของตัวเอง — ไม่นับเป็นรายรับหรือรายจ่าย ยอดรวมทุกบัญชีเท่าเดิม</Text>
+        <Text style={styles.hint}>{t('transfer.hint')}</Text>
 
-        <Field label="จากบัญชี" error={errors.from}>
+        <Field label={t('transfer.from')} error={errors.from}>
           {picker(fromId, setFromId)}
         </Field>
 
@@ -209,19 +210,19 @@ export default function TransferScreen() {
           }}
           scaleTo={0.85}
           style={styles.swap}
-          accessibilityLabel="สลับบัญชีต้นทางและปลายทาง"
+          accessibilityLabel={t('transfer.swap')}
         >
           <Text style={{ color: COLORS.primary, fontSize: 18, fontWeight: '800' }}>⇅</Text>
         </PressScale>
 
-        <Field label="ไปบัญชี" error={errors.to}>
+        <Field label={t('transfer.to')} error={errors.to}>
           {picker(toId, setToId)}
         </Field>
 
-        <Field label="จำนวนเงิน (บาท)" error={errors.amount}>
+        <Field label={t('money.amountBaht')} error={errors.amount}>
           <TextInput
             value={amountText}
-            onChangeText={(t) => setAmountText(t.replace(/[^0-9.,]/g, ''))}
+            onChangeText={(v) => setAmountText(v.replace(/[^0-9.,]/g, ''))}
             placeholder="0.00"
             keyboardType="decimal-pad"
             style={[styles.input, { fontSize: 18 }]}
@@ -230,12 +231,12 @@ export default function TransferScreen() {
 
         {fromId && toId && fromId !== toId && (
           <View style={styles.readonly}>
-            <AfterLine label="ต้นทางเหลือ" value={before(fromId) - (amount ?? 0)} />
-            <AfterLine label="ปลายทางเป็น" value={before(toId) + (amount ?? 0)} />
+            <AfterLine label={t('transfer.fromAfter')} value={before(fromId) - (amount ?? 0)} />
+            <AfterLine label={t('transfer.toAfter')} value={before(toId) + (amount ?? 0)} />
           </View>
         )}
 
-        <Field label="วันเดือนปี" error={errors.date}>
+        <Field label={t('form.date')} error={errors.date}>
           <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
             <Button title="◀" variant="outline" small onPress={() => shiftDay(-1)} />
             <TextInput
@@ -246,20 +247,20 @@ export default function TransferScreen() {
               style={[styles.input, { flex: 1, textAlign: 'center' }]}
             />
             <Button title="▶" variant="outline" small onPress={() => shiftDay(1)} />
-            <Button title="วันนี้" variant="ghost" small onPress={() => setDate(toISODate(new Date()))} />
+            <Button title={t('form.today')} variant="ghost" small onPress={() => setDate(toISODate(new Date()))} />
           </View>
           {isValidDate(date) && <Text style={styles.hint}>{dateLabel(date)}</Text>}
         </Field>
 
-        <Field label="รายละเอียดเพิ่มเติม">
-          <TextInput value={note} onChangeText={setNote} placeholder="เช่น เก็บเงินออม, จ่ายบัตรเครดิต" style={styles.input} />
+        <Field label={t('form.note')}>
+          <TextInput value={note} onChangeText={setNote} placeholder={t('transfer.noteHint')} style={styles.input} />
         </Field>
 
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <Button title="ยกเลิก" variant="outline" style={{ flex: 1 }} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
-          <Button title={saving ? 'กำลังบันทึก...' : slip ? 'คอนเฟิร์ม' : 'บันทึก'} style={{ flex: 1 }} onPress={save} disabled={saving} />
+          <Button title={t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
+          <Button title={saving ? t('common.saving') : slip ? t('slip.confirm') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={saving} />
         </View>
-        {!!editId && <Button title="ลบรายการโอนนี้" variant="danger" onPress={remove} />}
+        {!!editId && <Button title={t('transfer.delete')} variant="danger" onPress={remove} />}
       </Card>
     </ScrollView>
   );
@@ -269,7 +270,7 @@ function AfterLine({ label, value }: { label: string; value: number }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
       <Text style={{ color: COLORS.muted }}>{label}</Text>
-      <Text style={{ fontWeight: '700', color: value >= 0 ? COLORS.text : COLORS.out }}>{money(value)} บาท</Text>
+      <Text style={{ fontWeight: '700', color: value >= 0 ? COLORS.text : COLORS.out }}>{t('money.bahtValue', { amount: money(value) })}</Text>
     </View>
   );
 }

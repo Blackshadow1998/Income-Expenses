@@ -5,13 +5,14 @@ import { ApiError } from '@/api';
 import { useAuth } from '@/auth';
 import { PinPad } from '@/components/PinPad';
 import { showInfo } from '@/format';
+import { t } from '@/i18n';
 
 type Step = 'current' | 'new' | 'confirm';
 
 const TITLES: Record<Step, string> = {
-  current: 'ใส่ PIN ปัจจุบัน',
-  new: 'ตั้ง PIN ใหม่ 6 หลัก',
-  confirm: 'ยืนยัน PIN ใหม่อีกครั้ง',
+  current: t('pin.currentTitle'),
+  new: t('pin.newTitle'),
+  confirm: t('pin.newConfirmTitle'),
 };
 
 export default function ChangePinScreen() {
@@ -35,14 +36,14 @@ export default function ChangePinScreen() {
       return;
     }
     if (pin !== next) {
-      setError('PIN ใหม่สองครั้งไม่ตรงกัน กรุณาตั้งใหม่');
+      setError(t('pin.newMismatch'));
       setStep('new');
       return;
     }
     setBusy(true);
     try {
       await setPin(pin, current);
-      showInfo('เปลี่ยน PIN แล้ว', 'ครั้งต่อไปให้ใช้ PIN ใหม่ปลดล็อกแอป');
+      showInfo(t('pin.changedTitle'), t('pin.changedBody'));
       router.back();
     } catch (e) {
       // Wrong current PIN: start over. Too-simple new PIN: choose another.

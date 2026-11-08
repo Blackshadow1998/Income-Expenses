@@ -18,10 +18,10 @@ import (
 // Options are what the API needs from outside.
 type Options struct {
 	DB             *sql.DB
-	SlipsDir       string                               // uploaded slip and trip images
-	WebDir         string                               // exported web app; "" = API only
-	GoogleClientID string                               // Google sign-in is off when empty
-	SendMail       func(to, subject, body string) error // nil when e-mail is not configured
+	SlipsDir       string                                         // uploaded slip and trip images
+	WebDir         string                                         // exported web app; "" = API only
+	GoogleClientID string                                         // Google sign-in is off when empty
+	SendMail       func(to, fromName, subject, body string) error // nil when e-mail is not configured
 }
 
 // New builds the API. Slip image links are signed with a fresh key per start: they are short-lived
@@ -110,5 +110,5 @@ func (a *API) Handler() http.Handler {
 	if a.webDir != "" {
 		mux.Handle("/", web.Handler(a.webDir))
 	}
-	return httpx.CORS(mux)
+	return httpx.CORS(httpx.Language(mux))
 }

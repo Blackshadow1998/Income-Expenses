@@ -14,6 +14,7 @@ import (
 
 	"income-expenses/internal/database"
 	"income-expenses/internal/httpx"
+	"income-expenses/internal/i18n"
 	"income-expenses/internal/logx"
 
 	"golang.org/x/crypto/bcrypt"
@@ -115,9 +116,12 @@ func (a *Service) forgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Send in the background so known and unknown addresses take the same time to answer.
+	// The e-mail is in the language the code was asked in.
+	lang := i18n.FromContext(r.Context())
 	go func() {
-		body := fmt.Sprintf("รหัสยืนยันสำหรับตั้งรหัสผ่านใหม่ของคุณคือ\n\n    %s\n\nใช้ได้ภายใน 3 นาที และใช้ได้ครั้งเดียว\nถ้าคุณไม่ได้ขอรหัสนี้ ไม่ต้องทำอะไร รหัสผ่านของคุณยังเหมือนเดิม\n\n— รายรับรายจ่าย", code)
-		if err := a.sendMail(email, "รหัสยืนยัน "+code+" — รายรับรายจ่าย", body); err != nil {
+		body := fmt.Sprintf(i18n.T(lang, "รหัสยืนยันสำหรับตั้งรหัสผ่านใหม่ของคุณคือ\n\n    %s\n\nใช้ได้ภายใน 3 นาที และใช้ได้ครั้งเดียว\nถ้าคุณไม่ได้ขอรหัสนี้ ไม่ต้องทำอะไร รหัสผ่านของคุณยังเหมือนเดิม\n\n— รายรับรายจ่าย"), code)
+		subject := fmt.Sprintf(i18n.T(lang, "รหัสยืนยัน %s — รายรับรายจ่าย"), code)
+		if err := a.sendMail(email, i18n.T(lang, "รายรับรายจ่าย"), subject, body); err != nil {
 			logx.Logger.Printf("forgot password: %v", err)
 		}
 	}()

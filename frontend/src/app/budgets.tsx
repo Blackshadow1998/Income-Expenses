@@ -6,6 +6,7 @@ import { budgetColor } from '@/components/BudgetCard';
 import { FadeIn, PressScale } from '@/components/motion';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { CATEGORY_COLORS, CATEGORY_ICONS, COLORS, confirmAsync, currentMonth, money, showError } from '@/format';
+import { t, tCode } from '@/i18n';
 
 /** Monthly budgets per category or item; saving the same category/item again replaces its amount. */
 export default function BudgetsScreen() {
@@ -38,7 +39,7 @@ export default function BudgetsScreen() {
   const amount = Number(amountText.replace(/,/g, ''));
 
   const save = async () => {
-    if (!categoryId || !(amount > 0)) return showError(new Error('กรุณาเลือกหมวดและใส่จำนวนเงินที่มากกว่า 0'));
+    if (!categoryId || !(amount > 0)) return showError(new Error(t('budgets.pickError')));
     setSaving(true);
     try {
       await api.saveBudget(categoryId, subcategoryId, amount);
@@ -59,7 +60,7 @@ export default function BudgetsScreen() {
   };
 
   const remove = async (b: Budget) => {
-    if (!(await confirmAsync('ลบงบประมาณ', `ต้องการลบงบ "${b.subcategory_name || b.category_name}" ใช่หรือไม่?`))) return;
+    if (!(await confirmAsync(t('budgets.deleteTitle'), t('budgets.deleteBody', { name: b.subcategory_name || tCode('category', b.category_code, b.category_name) })))) return;
     try {
       await api.removeBudget(b.id);
       await load();
@@ -74,7 +75,7 @@ export default function BudgetsScreen() {
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Card style={{ gap: 12 }}>
-        <Text style={styles.h2}>ตั้งงบต่อเดือน</Text>
+        <Text style={styles.h2}>{t('budgets.setTitle')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {spendCategories.map((c) => {
             const active = c.id === categoryId;
@@ -89,7 +90,7 @@ export default function BudgetsScreen() {
                 style={[styles.catBtn, { borderColor: color }, active && { backgroundColor: color }]}
               >
                 <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>
-                  {CATEGORY_ICONS[c.code]} {c.name}
+                  {CATEGORY_ICONS[c.code]} {tCode('category', c.code, c.name)}
                 </Text>
               </PressScale>
             );
@@ -98,7 +99,7 @@ export default function BudgetsScreen() {
         {!!category?.subcategories.length && (
           <View style={styles.pickerWrap}>
             <Picker selectedValue={subcategoryId ?? 0} onValueChange={(v) => setSubcategoryId(Number(v) || null)} style={styles.picker}>
-              <Picker.Item label={`ทั้งหมวด "${category.name}"`} value={0} />
+              <Picker.Item label={t('budgets.wholeCategory', { name: tCode('category', category.code, category.name) })} value={0} />
               {category.subcategories.map((s) => (
                 <Picker.Item key={s.id} label={s.name} value={s.id} />
               ))}
@@ -108,20 +109,20 @@ export default function BudgetsScreen() {
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <TextInput
             value={amountText}
-            onChangeText={(t) => setAmountText(t.replace(/[^0-9.,]/g, ''))}
+            onChangeText={(v) => setAmountText(v.replace(/[^0-9.,]/g, ''))}
             onSubmitEditing={save}
-            placeholder="งบต่อเดือน (บาท)"
+            placeholder={t('budgets.amountPh')}
             placeholderTextColor="#9ca3af"
             keyboardType="decimal-pad"
             style={[styles.input, { flex: 1 }]}
           />
-          <Button title={saving ? '...' : 'บันทึก'} onPress={save} disabled={saving} />
+          <Button title={saving ? '...' : t('common.save')} onPress={save} disabled={saving} />
         </View>
-        <Text style={styles.hint}>ตั้งซ้ำหมวด/รายการเดิม = แก้จำนวนเงิน · นับรายจ่ายจากทุกบัญชี</Text>
+        <Text style={styles.hint}>{t('budgets.hint')}</Text>
       </Card>
 
       {budgets.length === 0 ? (
-        <Text style={[styles.hint, { textAlign: 'center' }]}>ยังไม่มีงบประมาณ</Text>
+        <Text style={[styles.hint, { textAlign: 'center' }]}>{t('budgets.empty')}</Text>
       ) : (
         budgets.map((b, i) => {
           const ratio = b.spent / b.amount;
@@ -130,14 +131,14 @@ export default function BudgetsScreen() {
               <PressScale onPress={() => edit(b)} scaleTo={0.98} style={styles.row}>
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.name}>
-                    {CATEGORY_ICONS[b.category_code]} {b.subcategory_name || `${b.category_name} (ทั้งหมวด)`}
+                    {CATEGORY_ICONS[b.category_code]} {b.subcategory_name || t('budget.wholeCategory', { name: tCode('category', b.category_code, b.category_name) })}
                   </Text>
                   <Text style={styles.hint}>
-                    {money(b.amount)} / เดือน · เดือนนี้ใช้ไป{' '}
+                    {t('budgets.perMonth', { amount: money(b.amount) })}{' '}
                     <Text style={{ color: budgetColor(ratio), fontWeight: '700' }}>{money(b.spent)}</Text>
                   </Text>
                 </View>
-                <PressScale onPress={() => remove(b)} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel="ลบงบ">
+                <PressScale onPress={() => remove(b)} hitSlop={8} scaleTo={0.85} style={styles.trash} accessibilityLabel={t('budgets.deleteTitle')}>
                   <Text style={{ fontSize: 13 }}>🗑️</Text>
                 </PressScale>
               </PressScale>

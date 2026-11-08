@@ -45,15 +45,15 @@ var (
 // Options are what sign-in needs from outside.
 type Options struct {
 	DB             *sql.DB
-	GoogleClientID string                               // Google sign-in is off when empty
-	SendMail       func(to, subject, body string) error // nil when e-mail is not configured
+	GoogleClientID string                                         // Google sign-in is off when empty
+	SendMail       func(to, fromName, subject, body string) error // nil when e-mail is not configured
 }
 
 type Service struct {
 	db             *sql.DB
 	googleClientID string
 	verifyGoogle   func(ctx context.Context, clientID, idToken string) (googleClaims, error)
-	sendMail       func(to, subject, body string) error
+	sendMail       func(to, fromName, subject, body string) error
 }
 
 func New(o Options) *Service {

@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { makeSpotlightTabBar } from '@/components/SpotlightTabBar';
 import { COLORS } from '@/format';
+import { t } from '@/i18n';
 
 // "รายรับรายจ่าย" holds both the monthly and the yearly view (switched at the top of each);
 // the yearly route has no button of its own.
@@ -18,11 +19,11 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: COLORS.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'รายรับรายจ่าย', tabBarLabel: 'รายรับรายจ่าย' }} />
-      <Tabs.Screen name="trips" options={{ title: 'หารบิลทริป', tabBarLabel: 'หารบิล' }} />
-      <Tabs.Screen name="accounts" options={{ title: 'บัญชี', tabBarLabel: 'บัญชี' }} />
-      <Tabs.Screen name="settings" options={{ title: 'ตั้งค่า', tabBarLabel: 'ตั้งค่า' }} />
-      <Tabs.Screen name="yearly" options={{ title: 'รายรับรายจ่าย', tabBarLabel: 'รายปี' }} />
+      <Tabs.Screen name="index" options={{ title: t('tabs.ledger'), tabBarLabel: t('tabs.ledgerShort') }} />
+      <Tabs.Screen name="trips" options={{ title: t('tabs.trips'), tabBarLabel: t('tabs.tripsShort') }} />
+      <Tabs.Screen name="accounts" options={{ title: t('tabs.accounts'), tabBarLabel: t('tabs.accounts') }} />
+      <Tabs.Screen name="settings" options={{ title: t('tabs.settings'), tabBarLabel: t('tabs.settings') }} />
+      <Tabs.Screen name="yearly" options={{ title: t('tabs.ledger'), tabBarLabel: t('tabs.yearly') }} />
     </Tabs>
   );
 }

@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Account, api, Option } from '@/api';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { ACCOUNT_TYPE_COLORS, COLORS, money, showError } from '@/format';
+import { t, tCode } from '@/i18n';
 
 const CARD_CODE = 'credit_card';
 type Kind = 'bank' | 'card';
@@ -74,9 +75,9 @@ export default function AccountFormScreen() {
     const amount = amountText.trim() === '' ? 0 : Number(amountText.replace(/,/g, ''));
     const chosenType = isCard ? cardTypeId : typeId;
     const errs: Record<string, string> = {};
-    if (!bankId) errs.bank = isCard ? 'กรุณาเลือกธนาคารผู้ออกบัตร' : 'กรุณาเลือกธนาคาร';
-    if (!chosenType) errs.type = 'กรุณาเลือกประเภทบัญชี';
-    if (!Number.isFinite(amount)) errs.amount = 'จำนวนเงินไม่ถูกต้อง';
+    if (!bankId) errs.bank = isCard ? t('account.pickIssuer') : t('account.pickBank');
+    if (!chosenType) errs.type = t('account.pickType');
+    if (!Number.isFinite(amount)) errs.amount = t('account.badAmount');
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
@@ -95,7 +96,7 @@ export default function AccountFormScreen() {
     }
   };
 
-  const title = isEdit ? (isCard ? 'แก้ไขบัตรเครดิต' : 'แก้ไขบัญชี') : isCard ? 'เพิ่มบัตรเครดิต' : 'เพิ่มบัญชีใหม่';
+  const title = isEdit ? (isCard ? t('account.editCard') : t('account.edit')) : isCard ? t('account.addCard') : t('account.add');
   if (loading) return (<><Stack.Screen options={{ title }} /><Loading /></>);
   if (loadError)
     return (
@@ -112,24 +113,24 @@ export default function AccountFormScreen() {
       <View style={styles.segment}>
         {(['bank', 'card'] as const).map((k) => (
           <Pressable key={k} onPress={() => switchKind(k)} style={[styles.segBtn, kind === k && styles.segBtnActive]}>
-            <Text style={[styles.segText, kind === k && { color: '#fff' }]}>{k === 'bank' ? '🏦 บัญชีธนาคาร' : '💳 บัตรเครดิต'}</Text>
+            <Text style={[styles.segText, kind === k && { color: '#fff' }]}>{k === 'bank' ? t('account.kindBank') : t('account.kindCard')}</Text>
           </Pressable>
         ))}
       </View>
 
       {existing && (
         <Card style={styles.balanceCard}>
-          <Text style={{ color: '#f5e9dc' }}>{isCard ? 'ยอดค้างชำระปัจจุบันของบัตรนี้' : 'เงินคงเหลือปัจจุบันของบัญชีนี้'}</Text>
-          <Text style={styles.balanceValue}>{money(isCard ? -existing.balance || 0 : existing.balance)} บาท</Text>
-          <Text style={{ color: '#e8d5c0', fontSize: 12 }}>{existing.transaction_count} รายการรับ/จ่าย</Text>
+          <Text style={{ color: '#f5e9dc' }}>{isCard ? t('account.cardOwedNow') : t('account.balanceNow')}</Text>
+          <Text style={styles.balanceValue}>{t('money.bahtValue', { amount: money(isCard ? -existing.balance || 0 : existing.balance) })}</Text>
+          <Text style={{ color: '#e8d5c0', fontSize: 12 }}>{t('account.txnCount', { n: existing.transaction_count })}</Text>
         </Card>
       )}
 
       <Card style={{ gap: 16 }}>
-        <Field label={isCard ? 'ธนาคารผู้ออกบัตร' : 'ธนาคาร'} error={errors.bank}>
+        <Field label={isCard ? t('account.issuer') : t('account.bank')} error={errors.bank}>
           <View style={styles.pickerWrap}>
             <Picker selectedValue={bankId ?? 0} onValueChange={(v) => setBankId(Number(v) || null)} style={styles.picker}>
-              <Picker.Item label="-- เลือกธนาคาร --" value={0} color={COLORS.muted} />
+              <Picker.Item label={t('account.pickBankItem')} value={0} color={COLORS.muted} />
               {banks.map((b) => (
                 <Picker.Item key={b.id} label={b.name} value={b.id} />
               ))}
@@ -140,18 +141,18 @@ export default function AccountFormScreen() {
         {isCard ? (
           !!errors.type && <Text style={{ color: COLORS.out, fontSize: 13 }}>{errors.type}</Text>
         ) : (
-          <Field label="ประเภท" error={errors.type}>
+          <Field label={t('account.type')} error={errors.type}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {bankTypes.map((t) => {
-                const active = t.id === typeId;
-                const color = ACCOUNT_TYPE_COLORS[t.code ?? ''] ?? COLORS.primary;
+              {bankTypes.map((ty) => {
+                const active = ty.id === typeId;
+                const color = ACCOUNT_TYPE_COLORS[ty.code ?? ''] ?? COLORS.primary;
                 return (
                   <Pressable
-                    key={t.id}
-                    onPress={() => setTypeId(t.id)}
+                    key={ty.id}
+                    onPress={() => setTypeId(ty.id)}
                     style={[styles.typeBtn, { borderColor: color }, active && { backgroundColor: color }]}
                   >
-                    <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{t.name}</Text>
+                    <Text style={{ color: active ? '#fff' : color, fontWeight: '700' }}>{tCode('accountType', ty.code, ty.name)}</Text>
                   </Pressable>
                 );
               })}
@@ -159,39 +160,39 @@ export default function AccountFormScreen() {
           </Field>
         )}
 
-        <Field label={isCard ? 'ชื่อบัตร (ไม่บังคับ)' : 'ชื่อบัญชี (ไม่บังคับ)'}>
+        <Field label={isCard ? t('account.cardName') : t('account.name')}>
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder={isCard ? 'เช่น บัตรหลัก, xxxx-1234' : 'เช่น บัญชีหลัก, xxx-1234'}
+            placeholder={isCard ? t('account.cardNameHint') : t('account.nameHint')}
             style={styles.input}
           />
         </Field>
 
         <Field
-          label={isCard ? (isEdit ? 'ยอดค้างชำระเริ่มต้น (บาท)' : 'ยอดค้างชำระ (บาท)') : isEdit ? 'จำนวนเงินเริ่มต้น (บาท)' : 'จำนวนเงิน (บาท)'}
+          label={isCard ? (isEdit ? t('account.cardOpening') : t('account.cardOwed')) : isEdit ? t('account.opening') : t('money.amountBaht')}
           error={errors.amount}
         >
           <TextInput
             value={amountText}
-            onChangeText={(t) => setAmountText(t.replace(/[^0-9.,-]/g, ''))}
+            onChangeText={(v) => setAmountText(v.replace(/[^0-9.,-]/g, ''))}
             placeholder="0.00"
             keyboardType="numbers-and-punctuation"
             style={[styles.input, { fontSize: 18 }]}
           />
           <Text style={styles.hint}>
             {isCard
-              ? 'ยอดที่ค้างชำระบนบัตรตอนเริ่มใช้งาน (ไม่มียอดค้าง ใส่ 0) การรูดบัตรที่บันทึกภายหลังจะเพิ่มยอดค้าง การจ่ายบัตรจะลดยอดค้าง'
-              : 'ยอดเงินในบัญชีตอนเริ่มใช้งาน รายการรับ/จ่ายที่บันทึกภายหลังจะบวก/ลบจากยอดนี้'}
+              ? t('account.cardHint')
+              : t('account.hint')}
           </Text>
         </Field>
 
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Button title="ยกเลิก" variant="outline" onPress={() => (router.canGoBack() ? router.back() : router.replace('/accounts'))} />
+            <Button title={t('common.cancel')} variant="outline" onPress={() => (router.canGoBack() ? router.back() : router.replace('/accounts'))} />
           </View>
           <View style={{ flex: 1 }}>
-            <Button title={saving ? 'กำลังบันทึก...' : 'บันทึก'} onPress={save} disabled={saving} />
+            <Button title={saving ? t('common.saving') : t('common.save')} onPress={save} disabled={saving} />
           </View>
         </View>
       </Card>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { api } from '../api';
+import { LANG, t } from '../i18n';
 
 declare global {
   interface Window {
@@ -19,10 +20,10 @@ let script: Promise<void> | null = null;
 function loadGoogleScript() {
   script ??= new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
+    s.src = `https://accounts.google.com/gsi/client?hl=${LANG}`; // the button ignores `locale` without it
     s.async = true;
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error('โหลด Google Sign-In ไม่ได้'));
+    s.onerror = () => reject(new Error(t('google.loadFailed')));
     document.head.appendChild(s);
   });
   return script;
@@ -55,7 +56,7 @@ export function GoogleButton({ onCredential, text = 'signin_with' }: {
         const el = document.getElementById(id);
         if (!el || !window.google) return;
         window.google.accounts.id.initialize({ client_id: clientId, callback: (r) => callback.current(r.credential) });
-        window.google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', shape: 'pill', text, locale: 'th' });
+        window.google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', shape: 'pill', text, locale: LANG });
       })
       .catch(() => {});
   }, [clientId, text]);

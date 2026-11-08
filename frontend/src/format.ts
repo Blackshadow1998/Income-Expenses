@@ -1,15 +1,13 @@
 import { Alert, Appearance, Platform } from 'react-native';
 import type { CategoryCode } from './api';
+import { LANG, t, tCode, tList } from './i18n';
 import { loadThemePref, saveThemePref } from './themeStore';
 
-export const MONTHS_FULL = [
-  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
-];
-export const MONTHS_SHORT = [
-  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-];
+export const MONTHS_FULL = tList('date.monthsFull');
+export const MONTHS_SHORT = tList('date.monthsShort');
+
+/** 2026 -> "2569" in Thai (Buddhist year), "2026" in English. */
+export const yearLabel = (y: number) => String(LANG === 'th' ? y + 543 : y);
 
 export const CATEGORY_ICONS: Record<CategoryCode, string> = {
   income: '💰',
@@ -25,7 +23,7 @@ export type ThemePref = 'system' | 'light' | 'dark';
 const stored = loadThemePref();
 export const THEME_PREF: ThemePref = stored === 'light' || stored === 'dark' ? stored : 'system';
 export const IS_DARK = THEME_PREF === 'dark' || (THEME_PREF === 'system' && Appearance.getColorScheme() === 'dark');
-export const setThemePref = (pref: ThemePref) => saveThemePref(pref);
+export const setThemePref = (pref: ThemePref) => saveThemePref(pref, t('settings.themeChangedTitle'), t('settings.themeChangedBody'));
 
 /**
  * Earthy colours, one family per category pair: in sage / out brick, lend ochre + its return teal,
@@ -112,17 +110,22 @@ export function toISODate(d: Date): string {
 
 export const currentMonth = () => toISODate(new Date()).slice(0, 7);
 
-/** "2026-11" -> "พฤศจิกายน 2569" (Buddhist year) */
+/** "2026-11" -> "พฤศจิกายน 2569" / "November 2026" */
 export function monthLabel(ym: string): string {
   const [y, m] = ym.split('-').map(Number);
-  return `${MONTHS_FULL[m - 1]} ${y + 543}`;
+  return `${MONTHS_FULL[m - 1]} ${yearLabel(y)}`;
 }
 
-/** "2026-11-06" -> "6 พ.ย. 2569" */
+/** "2026-11-06" -> "6 พ.ย. 2569" / "6 Nov 2026" */
 export function dateLabel(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   if (!y || !m || !d) return iso;
-  return `${d} ${MONTHS_SHORT[m - 1]} ${y + 543}`;
+  return `${d} ${MONTHS_SHORT[m - 1]} ${yearLabel(y)}`;
+}
+
+/** Date -> "6 พ.ย. 2569 14:05" / "6 Nov 2026 14:05" (no Intl: its support varies on Hermes). */
+export function dateTimeLabel(d: Date): string {
+  return `${dateLabel(toISODate(d))} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 export function shiftMonth(ym: string, delta: number): string {
@@ -139,13 +142,13 @@ export function isValidDate(iso: string): boolean {
 }
 
 /** Alert.alert is a no-op on react-native-web, so fall back to window.confirm there. */
-export function confirmAsync(title: string, message: string, okText = 'ลบ'): Promise<boolean> {
+export function confirmAsync(title: string, message: string, okText = t('common.delete')): Promise<boolean> {
   if (Platform.OS === 'web') {
     return Promise.resolve(window.confirm(`${title}\n\n${message}`));
   }
   return new Promise((resolve) =>
     Alert.alert(title, message, [
-      { text: 'ยกเลิก', style: 'cancel', onPress: () => resolve(false) },
+      { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
       { text: okText, style: 'destructive', onPress: () => resolve(true) },
     ]),
   );
@@ -153,8 +156,8 @@ export function confirmAsync(title: string, message: string, okText = 'ลบ'):
 
 export function showError(err: unknown) {
   const msg = err instanceof Error ? err.message : String(err);
-  if (Platform.OS === 'web') window.alert(`เกิดข้อผิดพลาด: ${msg}`);
-  else Alert.alert('เกิดข้อผิดพลาด', msg);
+  if (Platform.OS === 'web') window.alert(`${t('common.error')}: ${msg}`);
+  else Alert.alert(t('common.error'), msg);
 }
 
 export const ACCOUNT_TYPE_COLORS: Record<string, string> = {
@@ -165,9 +168,26 @@ export const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   payment: '#ea580c',
 };
 
+type AccountNames = { bank_name: string; type_code: string; type_name: string; name: string };
+
+/** "กสิกรไทย (KBank)": as stored in Thai, the short name in brackets in English (banks have no code). */
+export function bankName(name: string): string {
+  return LANG === 'en' ? (/\(([^)]+)\)\s*$/.exec(name)?.[1] ?? name) : name;
+}
+
+/**
+ * The server's account labels with the bank and type in the app's language:
+ * "ธนาคาร · ประเภท · ชื่อ", or `short` "ธนาคาร · ชื่อ" (the type when there is no name) as on transfers.
+ */
+export function accountLabel(a: AccountNames, short = false): string {
+  const type = tCode('accountType', a.type_code, a.type_name);
+  return [bankName(a.bank_name), ...(short ? [a.name || type] : [type, a.name])].filter(Boolean).join(' · ');
+}
+
 /** "กสิกรไทย (KBank)" + "บัญชีหลัก" -> "กสิกรไทย · บัญชีหลัก" (falls back to the type name). */
-export function shortAccountLabel(a: { bank_name: string; name: string; type_name: string }): string {
-  return `${a.bank_name.replace(/\s*\(.*\)$/, '')} · ${a.name || a.type_name}`;
+export function shortAccountLabel(a: AccountNames): string {
+  const bank = LANG === 'en' ? bankName(a.bank_name) : a.bank_name.replace(/\s*\(.*\)$/, '');
+  return `${bank} · ${a.name || tCode('accountType', a.type_code, a.type_name)}`;
 }
 
 /** Simple message box that works on web (Alert.alert is a no-op there) and native. */

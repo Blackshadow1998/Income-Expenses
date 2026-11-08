@@ -82,9 +82,11 @@ cd frontend && npx expo start --web --port 8081                                #
 
 - **`dev`** — day-to-day work: commit and push here.
 - **`main`** — the stable system. The live container on this PC must run `main`.
-- Test on `dev` against a copy of the data (test image on another port, e.g. :8090). When the owner says it is
-  stable: merge `dev` → `main` (fast-forward), deploy from `main` (`git checkout main` →
-  `docker compose up -d --build` → `git checkout dev`). Never deploy the live container from `dev`.
+- After every finished change whose checks pass (tsc/lint/tests): merge `dev` → `main` (fast-forward) and deploy
+  from `main` straight away, without waiting to be asked (owner's rule since 2026-11-08; they test on the phone):
+  `git checkout main` → `git merge --ff-only dev` → push → `docker compose up -d --build` → `git checkout dev`.
+  Schema changes: back up the live DB first and test on a copy (another port, e.g. :8090) before deploying.
+  Never deploy the live container from `dev`.
 
 ## Working on the owner's data
 

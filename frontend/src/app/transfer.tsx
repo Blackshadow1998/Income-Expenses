@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Account, api, Slip } from '@/api';
 import { PressScale } from '@/components/motion';
+import { DeleteButton } from '@/components/DeleteButton';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { accountLabel, COLORS, confirmAsync, currentMonth, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
 import { t } from '@/i18n';
@@ -127,16 +128,7 @@ export default function TransferScreen() {
     }
   };
 
-  const remove = async () => {
-    if (!editId || !(await confirmAsync(t('transfer.deleteTitle'), t('transfer.deleteBody', { amount: money(amount ?? 0) })))) return;
-    try {
-      await api.removeTransfer(editId);
-      if (router.canGoBack()) router.back();
-      else router.replace('/');
-    } catch (e) {
-      showError(e);
-    }
-  };
+  const leave = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
   const title = editId ? t('transfer.edit') : slipId ? t('transfer.confirmSlip') : t('transfer.title');
   if (loading)
@@ -260,7 +252,14 @@ export default function TransferScreen() {
           <Button title={t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
           <Button title={saving ? t('common.saving') : slip ? t('slip.confirm') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={saving} />
         </View>
-        {!!editId && <Button title={t('transfer.delete')} variant="danger" onPress={remove} />}
+        {!!editId && (
+          <DeleteButton
+            title={t('transfer.delete')}
+            confirm={() => confirmAsync(t('transfer.deleteTitle'), t('transfer.deleteBody', { amount: money(amount ?? 0) }))}
+            onDelete={() => api.removeTransfer(editId)}
+            onDone={leave}
+          />
+        )}
       </Card>
     </ScrollView>
   );

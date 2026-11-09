@@ -1,6 +1,7 @@
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, Slip } from '../api';
 import { COLORS, dateLabel, money } from '../format';
+import { DeleteButton } from './DeleteButton';
 import { Button } from './ui';
 import { t } from '../i18n';
 
@@ -8,11 +9,13 @@ import { t } from '../i18n';
 export function PendingSlipCard({
   slip,
   onConfirm,
-  onDelete,
+  confirmDelete,
+  onDeleted,
 }: {
   slip: Slip;
   onConfirm: () => void;
-  onDelete: () => void;
+  confirmDelete: () => Promise<boolean>;
+  onDeleted: () => void;
 }) {
   const imageUrl = api.slipImageUrl(slip);
   return (
@@ -56,7 +59,7 @@ export function PendingSlipCard({
         <Text style={styles.amount}>{slip.amount > 0 ? money(slip.amount) : t('slip.noAmount')}</Text>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           <Button title={t('slip.confirm')} small onPress={onConfirm} />
-          <Button title={t('common.delete')} variant="danger" small onPress={onDelete} />
+          <DeleteButton title={t('common.delete')} small confirm={confirmDelete} onDelete={() => api.removeSlip(slip.id)} onDone={onDeleted} />
         </View>
       </View>
     </View>

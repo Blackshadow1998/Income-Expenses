@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { Image, Linking, Platform, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, Trip, TripBill, TripPair, TripPayment, TripSummary } from '@/api';
 import { FadeIn, GrowBar, PressScale } from '@/components/motion';
+import { DeleteButton } from '@/components/DeleteButton';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, confirmAsync, dateLabel, money, showError, showInfo } from '@/format';
 import { t } from '@/i18n';
@@ -102,15 +103,6 @@ export default function TripScreen() {
     }
   };
 
-  const removeTrip = async () => {
-    if (!trip || !(await confirmAsync(t('trip.deleteTitle'), t('trip.deleteBody', { name: trip.name })))) return;
-    try {
-      await api.removeTrip(id);
-      router.back();
-    } catch (e) {
-      showError(e);
-    }
-  };
 
   if (error && !trip) return <View style={styles.page}><ErrorBox message={error} onRetry={load} /></View>;
   if (!trip) return <Loading />;
@@ -183,7 +175,13 @@ export default function TripScreen() {
         />
       )}
 
-      <Button title={t('trip.delete')} variant="danger" onPress={removeTrip} style={{ marginTop: 12 }} />
+      <DeleteButton
+        title={t('trip.delete')}
+        confirm={() => confirmAsync(t('trip.deleteTitle'), t('trip.deleteBody', { name: trip.name }))}
+        onDelete={() => api.removeTrip(id)}
+        onDone={() => router.back()}
+        style={{ marginTop: 12 }}
+      />
     </ScrollView>
   );
 }

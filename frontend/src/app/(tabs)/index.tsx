@@ -143,15 +143,9 @@ export default function MonthScreen() {
     }
   };
 
-  const onDeleteSlip = async (sl: Slip) => {
+  const confirmDeleteSlip = (sl: Slip) => {
     const amount = sl.amount > 0 ? `${t('money.bahtValue', { amount: money(sl.amount) })} ` : '';
-    if (!(await confirmAsync(t('month.deleteSlipTitle'), t('month.deleteSlipBody', { amount, date: dateLabel(sl.date) })))) return;
-    try {
-      await api.removeSlip(sl.id);
-      await loadAll(monthRef.current);
-    } catch (e) {
-      showError(e);
-    }
+    return confirmAsync(t('month.deleteSlipTitle'), t('month.deleteSlipBody', { amount, date: dateLabel(sl.date) }));
   };
 
   const goConfirm = (sl: Slip) => router.push({ pathname: '/transaction', params: { slipId: String(sl.id) } });
@@ -282,7 +276,7 @@ export default function MonthScreen() {
               <Text style={styles.pendingHeader}>{t('month.pending', { n: data.pending.length })}</Text>
               {data.pending.map((sl, i) => (
                 <FadeIn key={sl.id} delay={240 + i * 50}>
-                  <PendingSlipCard slip={sl} onConfirm={() => goConfirm(sl)} onDelete={() => onDeleteSlip(sl)} />
+                  <PendingSlipCard slip={sl} onConfirm={() => goConfirm(sl)} confirmDelete={() => confirmDeleteSlip(sl)} onDeleted={() => loadAll(monthRef.current)} />
                 </FadeIn>
               ))}
             </View>

@@ -5,6 +5,7 @@ import { ScrollView, ScrollViewInstance, StyleSheet, Text, TextInput, View } fro
 import { api, SplitMode, Trip, TripOCR } from '@/api';
 import { PressScale } from '@/components/motion';
 import { PhotoField } from '@/components/PhotoField';
+import { DeleteButton } from '@/components/DeleteButton';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, confirmAsync, dateLabel, isValidDate, money, showError, toISODate } from '@/format';
 import { t } from '@/i18n';
@@ -162,15 +163,6 @@ export default function TripBillScreen() {
     router.back();
   };
 
-  const remove = async () => {
-    if (!billId || !(await confirmAsync(t('trip.deleteBillTitle'), t('bill.deleteBody', { title })))) return;
-    try {
-      await api.removeTripBill(billId);
-      router.back();
-    } catch (e) {
-      showError(e);
-    }
-  };
 
   const screenTitle = billId ? t('bill.edit') : t('trip.addBill');
   if (error) return <View style={styles.page}><Stack.Screen options={{ title: screenTitle }} /><ErrorBox message={error} onRetry={load} /></View>;
@@ -329,7 +321,14 @@ export default function TripBillScreen() {
           <Button title={used.length ? t('bill.done') : t('common.cancel')} variant="outline" style={{ flex: 1 }} onPress={() => router.back()} />
           <Button title={saving ? t('common.saving') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={saving || !!(preview && 'error' in preview)} />
         </View>
-        {!!billId && <Button title={t('bill.delete')} variant="danger" onPress={remove} />}
+        {!!billId && (
+          <DeleteButton
+            title={t('bill.delete')}
+            confirm={() => confirmAsync(t('trip.deleteBillTitle'), t('bill.deleteBody', { title }))}
+            onDelete={() => api.removeTripBill(billId)}
+            onDone={() => router.back()}
+          />
+        )}
       </Card>
       {preview && 'shares' in preview && (
         <Text style={[styles.hint, { textAlign: 'center' }]}>

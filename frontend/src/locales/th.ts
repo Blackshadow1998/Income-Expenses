@@ -271,6 +271,8 @@ export const th = {
   'month.pending': '🧾 รอคอนเฟิร์ม ({n}) — ยังไม่นับรวมในยอดเงิน',
   'month.listAll': 'รายการทั้งเดือน',
   'month.listToday': 'รายการวันนี้',
+  'month.pickTitle': 'เลือกเดือน',
+  'month.thisMonth': 'เดือนนี้',
   'month.listDay': 'รายการ {day} {month}',
   'month.search': 'ค้นหารายการ',
   'month.searchBtn': '🔍 ค้นหา',

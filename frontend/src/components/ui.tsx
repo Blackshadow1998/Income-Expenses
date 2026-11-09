@@ -68,13 +68,27 @@ export function ErrorBox({ message, onRetry }: { message: string; onRetry: () =>
 }
 
 /** ◀ label ▶ stepper used for month and year selection. `light` is for use on a coloured header. */
-export function Stepper({ label, onPrev, onNext, light }: { label: string; onPrev: () => void; onNext: () => void; light?: boolean }) {
+export function Stepper({ label, onPrev, onNext, onLabelPress, light }: {
+  label: string;
+  onPrev: () => void;
+  onNext: () => void;
+  /** Makes the label a button (with a ▾), e.g. to open a picker. */
+  onLabelPress?: () => void;
+  light?: boolean;
+}) {
+  const text = <Text style={[styles.stepLabel, light && { color: '#fff' }]}>{label}{onLabelPress ? ' ▾' : ''}</Text>;
   return (
     <View style={styles.stepper}>
       <PressScale onPress={onPrev} hitSlop={8} scaleTo={0.85} style={[styles.stepBtn, light && styles.stepBtnLight]}>
         <Text style={[styles.stepArrow, light && { color: '#fff' }]}>‹</Text>
       </PressScale>
-      <Text style={[styles.stepLabel, light && { color: '#fff' }]}>{label}</Text>
+      {onLabelPress ? (
+        <PressScale onPress={onLabelPress} hitSlop={8} scaleTo={0.94} accessibilityRole="button">
+          {text}
+        </PressScale>
+      ) : (
+        text
+      )}
       <PressScale onPress={onNext} hitSlop={8} scaleTo={0.85} style={[styles.stepBtn, light && styles.stepBtnLight]}>
         <Text style={[styles.stepArrow, light && { color: '#fff' }]}>›</Text>
       </PressScale>

@@ -273,6 +273,8 @@ export const en: Record<keyof typeof th, string> = {
   'month.pending': '🧾 Pending ({n}) — not counted in balances yet',
   'month.listAll': 'This month\'s entries',
   'month.listToday': 'Today\'s entries',
+  'month.pickTitle': 'Pick a month',
+  'month.thisMonth': 'This month',
   'month.listDay': 'Entries on {day} {month}',
   'month.search': 'Search transactions',
   'month.searchBtn': '🔍 Search',

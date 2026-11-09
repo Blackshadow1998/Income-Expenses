@@ -7,6 +7,7 @@ import { Account, api, Budget, Category, Insights, MonthData, Slip, Transaction,
 import { AccountFilter } from '@/components/AccountFilter';
 import { BudgetCard } from '@/components/BudgetCard';
 import { InsightsCard } from '@/components/InsightsCard';
+import { MonthPicker } from '@/components/MonthPicker';
 import { AnimatedNumber, FadeIn, GrowBar, PressScale, Skeleton } from '@/components/motion';
 import { PendingSlipCard } from '@/components/PendingSlipCard';
 import { PeriodSwitch } from '@/components/PeriodSwitch';
@@ -31,6 +32,7 @@ export default function MonthScreen() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [slipMenu, setSlipMenu] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The day whose entries are listed ('YYYY-MM-DD'), or 'all' for the whole month.
   const [day, setDay] = useState('');
@@ -195,6 +197,7 @@ export default function MonthScreen() {
             label={month ? monthLabel(month) : '...'}
             onPrev={() => month && loadMonth(shiftMonth(month, -1))}
             onNext={() => month && loadMonth(shiftMonth(month, 1))}
+            onLabelPress={() => month && setPicking(true)}
           />
           <View style={{ alignItems: 'center', gap: 2, marginTop: 6 }}>
             <Text style={styles.heroLabel}>{accountId ? t('month.balanceAccount') : t('month.balanceAll')}</Text>
@@ -347,6 +350,9 @@ export default function MonthScreen() {
             ))
           )}
         </>
+      )}
+      {month && (
+        <MonthPicker visible={picking} value={month} marked={months} onPick={loadMonth} onClose={() => setPicking(false)} />
       )}
     </ScrollView>
   );

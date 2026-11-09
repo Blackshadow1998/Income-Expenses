@@ -129,7 +129,6 @@ export const th = {
   // PIN
   'pin.deleteDigit': 'ลบตัวเลข (กดค้างเพื่อลบทั้งหมด)',
   'pin.unlocked': 'ปลดล็อกแล้ว',
-  'pin.tapToStart': 'แตะเพื่อเริ่ม',
   'pin.entered': 'ใส่แล้ว {n} จาก {length} หลัก',
   'pin.mismatch': 'PIN สองครั้งไม่ตรงกัน กรุณาตั้งใหม่',
   'pin.setTitle': 'ตั้ง PIN 6 หลัก',

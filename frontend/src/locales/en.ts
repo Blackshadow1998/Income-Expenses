@@ -131,7 +131,6 @@ export const en: Record<keyof typeof th, string> = {
   // PIN
   'pin.deleteDigit': 'Delete digit (hold to clear all)',
   'pin.unlocked': 'Unlocked',
-  'pin.tapToStart': 'Tap to start',
   'pin.entered': '{n} of {length} digits entered',
   'pin.mismatch': 'The PINs do not match. Please set it again.',
   'pin.setTitle': 'Set a 6-digit PIN',

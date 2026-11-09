@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { ApiError } from '../api';
 import { useAuth } from '../auth';
 import { COLORS } from '../format';
-import { PinPad } from './PinPad';
+import { PinPad, VaultBackdrop } from './PinPad';
 import { VAULT } from './VaultDial';
 import { Button, Card, ErrorBox, Loading } from './ui';
 import { t } from '../i18n';
@@ -171,6 +171,7 @@ function FooterLink({ title, onPress }: { title: string; onPress: () => void }) 
 export function Overlay({ children, vault }: { children: React.ReactNode; vault?: boolean }) {
   return (
     <View style={[styles.overlay, vault && { backgroundColor: VAULT.bg }]}>
+      {vault && <VaultBackdrop />}
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>{children}</ScrollView>
     </View>
   );

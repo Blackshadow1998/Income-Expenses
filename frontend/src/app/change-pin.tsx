@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { ApiError } from '@/api';
 import { useAuth } from '@/auth';
-import { PinPad } from '@/components/PinPad';
+import { PinPad, VaultBackdrop } from '@/components/PinPad';
 import { showInfo } from '@/format';
 import { t } from '@/i18n';
 
@@ -56,14 +56,17 @@ export default function ChangePinScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
-      <PinPad
-        title={TITLES[step]}
-        error={error}
-        busy={busy}
-        onComplete={onComplete}
-        listenKeys={status === 'ready'} // the lock screen may be on top
-      />
-    </ScrollView>
+    <View style={{ flex: 1 }}>
+      <VaultBackdrop />
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+        <PinPad
+          title={TITLES[step]}
+          error={error}
+          busy={busy}
+          onComplete={onComplete}
+          listenKeys={status === 'ready'} // the lock screen may be on top
+        />
+      </ScrollView>
+    </View>
   );
 }

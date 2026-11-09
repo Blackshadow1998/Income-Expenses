@@ -89,6 +89,24 @@ export function VaultDial({ digits, length, mode, size }: { digits: string; leng
         ]}
       />
 
+      {/* Glowing gold rim around the rings. */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.abs,
+          {
+            left: c - outer - 3,
+            top: c - outer - 3,
+            width: (outer + 3) * 2,
+            height: (outer + 3) * 2,
+            borderRadius: outer + 3,
+            borderWidth: 2,
+            borderColor: mode === 'denied' ? VAULT.red : VAULT.gold,
+            boxShadow: `0px 0px 18px ${mode === 'denied' ? 'rgba(239, 91, 76, 0.5)' : 'rgba(233, 181, 98, 0.5)'}`,
+          },
+        ]}
+      />
+
       {Array.from({ length: TICKS }, (_, k) => {
         const a = (k * 360) / TICKS;
         const r = c - 8;
@@ -103,7 +121,7 @@ export function VaultDial({ digits, length, mode, size }: { digits: string; leng
                 left: c + r * Math.sin((a * Math.PI) / 180) - 3,
                 top: c - r * Math.cos((a * Math.PI) / 180) - 8,
                 transform: [{ rotate: `${a}deg` }],
-                backgroundColor: on ? color : '#4a4039',
+                backgroundColor: on ? color : 'rgba(233, 181, 98, 0.28)',
                 boxShadow: on ? `0px 0px 8px ${color}` : undefined,
               },
             ]}

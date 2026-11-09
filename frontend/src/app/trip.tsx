@@ -1,9 +1,10 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Image, Linking, Platform, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { api, Trip, TripBill, TripPair, TripPayment, TripSummary } from '@/api';
+import { api, Trip, TripBill, TripMember, TripPair, TripPayment, TripSummary } from '@/api';
 import { FadeIn, GrowBar, PressScale } from '@/components/motion';
 import { DeleteButton } from '@/components/DeleteButton';
+import { hasPayInfo, PayInfoModal } from '@/components/PayInfo';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, confirmAsync, dateLabel, money, showError, showInfo } from '@/format';
 import { t } from '@/i18n';
@@ -33,6 +34,7 @@ export default function TripScreen() {
   const [error, setError] = useState<string | null>(null);
   const [newMember, setNewMember] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [paying, setPaying] = useState<{ member: TripMember; amount?: number } | null>(null);
 
   const loadSummary = useCallback(
     async (m: TripSummary['mode']) => {
@@ -84,9 +86,8 @@ export default function TripScreen() {
     run(() => api.addTripMember(id, name));
   };
 
-  const removeMember = async (memberId: number, name: string) => {
-    if (await confirmAsync(t('trip.removeMemberTitle'), t('trip.removeMemberBody', { name }))) run(() => api.removeTripMember(id, memberId));
-  };
+  const editMember = (memberId: number) =>
+    router.push({ pathname: '/trip-member', params: { tripId: String(id), id: String(memberId) } });
 
   const copySummary = async () => {
     if (!trip || !summary) return;
@@ -107,6 +108,13 @@ export default function TripScreen() {
   if (error && !trip) return <View style={styles.page}><ErrorBox message={error} onRetry={load} /></View>;
   if (!trip) return <Loading />;
   const names = Object.fromEntries(trip.members.map((m) => [m.id, m.name]));
+  const people = trip.members.filter((m) => !m.is_pool);
+  const pool = trip.pool;
+  const poolMember = pool ? trip.members.find((m) => m.id === pool.member_id) : undefined;
+  const showPay = (memberId: number, amount?: number) => {
+    const member = trip.members.find((m) => m.id === memberId);
+    if (member) setPaying({ member, amount });
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
@@ -129,13 +137,21 @@ export default function TripScreen() {
             </PressScale>
           </View>
         )}
-        <Text style={styles.label}>{t('trip.members', { n: trip.members.length })}</Text>
+        <Text style={styles.label}>{t('trip.members', { n: people.length })}</Text>
         <View style={styles.chips}>
-          {trip.members.map((m) => (
-            <PressScale key={m.id} onPress={() => removeMember(m.id, m.name)} style={styles.member}>
-              <Text style={styles.memberText}>{m.name}</Text>
+          {people.map((m) => (
+            <PressScale key={m.id} onPress={() => editMember(m.id)} style={styles.member}>
+              <Text style={styles.memberText}>
+                {m.name}
+                {hasPayInfo(m) ? ' 💳' : ''}
+              </Text>
             </PressScale>
           ))}
+          {!pool && (
+            <PressScale onPress={() => run(() => api.addTripPool(id))} style={[styles.member, styles.addPool]}>
+              <Text style={styles.memberText}>＋ 💰 {t('trip.addPool')}</Text>
+            </PressScale>
+          )}
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TextInput
@@ -151,6 +167,33 @@ export default function TripScreen() {
         </View>
       </Card>
 
+      {pool && poolMember && (
+        <Card style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.h3}>{t('trip.poolTitle')}</Text>
+            <PressScale onPress={() => editMember(poolMember.id)} style={styles.iconBtn} accessibilityLabel={t('pay.edit')}>
+              <Text>✏️</Text>
+            </PressScale>
+          </View>
+          <Text style={[styles.poolBalance, { color: pool.balance < 0 ? COLORS.out : COLORS.in }]}>
+            {t('trip.poolBalance', { amount: money(pool.balance) })}
+          </Text>
+          <Text style={styles.hint}>{t('trip.poolLine', { in: money(pool.in), spent: money(pool.spent), out: money(pool.out) })}</Text>
+          {pool.balance < 0 && <Text style={[styles.hint, { color: COLORS.out }]}>{t('trip.poolShort', { amount: money(-pool.balance) })}</Text>}
+          <Text style={styles.hint}>{t('trip.poolHint')}</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button
+              title={t('trip.poolTopUp')}
+              icon="＋"
+              small
+              style={{ flex: 1 }}
+              onPress={() => router.push({ pathname: '/trip-payment', params: { tripId: String(id), to: String(poolMember.id) } })}
+            />
+            <Button title={t('trip.howToPay')} variant="soft" small style={{ flex: 1 }} onPress={() => showPay(poolMember.id)} />
+          </View>
+        </Card>
+      )}
+
       <View style={styles.segment}>
         {TABS.map((tb) => (
           <PressScale key={tb.key} onPress={() => setTab(tb.key)} containerStyle={{ flex: 1 }} style={[styles.segBtn, tab === tb.key && styles.segOn]}>
@@ -159,9 +202,9 @@ export default function TripScreen() {
         ))}
       </View>
 
-      {tab === 'bills' && <BillsTab trip={trip} names={names} onDelete={(b) => run(() => api.removeTripBill(b.id))} />}
+      {tab === 'bills' && <BillsTab trip={trip} people={people.length} names={names} onDelete={(b) => run(() => api.removeTripBill(b.id))} />}
       {tab === 'summary' && (
-        <SummaryTab tripId={id} summary={summary} mode={mode} onMode={switchMode} onCopy={copySummary} hasBills={trip.bills.length > 0} />
+        <SummaryTab tripId={id} summary={summary} mode={mode} onMode={switchMode} onCopy={copySummary} onHowToPay={showPay} hasBills={trip.bills.length > 0} />
       )}
       {tab === 'payments' && (
         <PaymentsTab
@@ -182,11 +225,12 @@ export default function TripScreen() {
         onDone={() => router.back()}
         style={{ marginTop: 12 }}
       />
+      <PayInfoModal tripId={id} member={paying?.member ?? null} amount={paying?.amount} onClose={() => setPaying(null)} />
     </ScrollView>
   );
 }
 
-function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number, string>; onDelete: (b: TripBill) => void }) {
+function BillsTab({ trip, people, names, onDelete }: { trip: Trip; people: number; names: Record<number, string>; onDelete: (b: TripBill) => void }) {
   const remove = async (b: TripBill) => {
     if (await confirmAsync(t('trip.deleteBillTitle'), t('trip.deleteBillBody', { title: b.title, amount: money(b.amount) }))) onDelete(b);
   };
@@ -195,13 +239,13 @@ function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number,
       <Button
         title={t('trip.addBill')}
         icon="＋"
-        disabled={trip.members.length < 2}
+        disabled={people < 2}
         onPress={() => router.push({ pathname: '/trip-bill', params: { tripId: String(trip.id) } })}
       />
       {trip.bills.length === 0 ? (
         <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 26 }}>
           <Text style={{ fontSize: 34 }}>🧾</Text>
-          <Text style={{ color: COLORS.muted }}>{trip.members.length < 2 ? t('trip.needMembers') : t('trip.noBills')}</Text>
+          <Text style={{ color: COLORS.muted }}>{people < 2 ? t('trip.needMembers') : t('trip.noBills')}</Text>
         </Card>
       ) : (
         trip.bills.map((b, i) => (
@@ -239,12 +283,13 @@ function BillsTab({ trip, names, onDelete }: { trip: Trip; names: Record<number,
   );
 }
 
-function SummaryTab({ tripId, summary, mode, onMode, onCopy, hasBills }: {
+function SummaryTab({ tripId, summary, mode, onMode, onCopy, onHowToPay, hasBills }: {
   tripId: number;
   summary: TripSummary | null;
   mode: TripSummary['mode'];
   onMode: (m: TripSummary['mode']) => void;
   onCopy: () => void;
+  onHowToPay: (memberId: number, amount: number) => void;
   hasBills: boolean;
 }) {
   if (!summary) return <Loading />;
@@ -317,7 +362,12 @@ function SummaryTab({ tripId, summary, mode, onMode, onCopy, hasBills }: {
                 <Text style={[styles.amount, { color: p.remaining > 0 ? COLORS.out : COLORS.in }]}>
                   {p.remaining > 0 ? money(p.remaining) : '✓'}
                 </Text>
-                {p.remaining > 0 && <Button title={t('trip.markPaid')} small onPress={() => pay(p)} />}
+                {p.remaining > 0 && (
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <Button title={t('trip.howToPay')} variant="soft" small onPress={() => onHowToPay(p.to, p.remaining)} />
+                    <Button title={t('trip.markPaid')} small onPress={() => pay(p)} />
+                  </View>
+                )}
               </View>
             </View>
           </FadeIn>
@@ -433,6 +483,8 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   member: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.primarySoft },
   memberText: { color: COLORS.primary, fontWeight: '800' },
+  addPool: { backgroundColor: 'transparent', borderWidth: 1.5, borderStyle: 'dashed', borderColor: COLORS.primary },
+  poolBalance: { fontSize: 22, fontWeight: '800' },
   segment: { flexDirection: 'row', backgroundColor: COLORS.track, borderRadius: 14, padding: 3 },
   segBtn: { paddingVertical: 9, borderRadius: 11, alignItems: 'center' },
   segOn: { backgroundColor: COLORS.card, boxShadow: '0px 2px 6px rgba(59, 47, 42, 0.15)' },

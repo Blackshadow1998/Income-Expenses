@@ -17,6 +17,9 @@ const MODES: { key: SplitMode; label: string }[] = [
   { key: 'ratio', label: t('trip.modeRatio') },
 ];
 
+/** Members who can share a bill: everyone but the shared pool (which can only pay). */
+const sharers = (trip: Trip) => trip.members.filter((m) => !m.is_pool);
+
 /** Add or edit a trip bill: title, amount, payer, who shares it and how. */
 export default function TripBillScreen() {
   const params = useLocalSearchParams<{ tripId: string; id?: string }>();
@@ -59,8 +62,8 @@ export default function TripBillScreen() {
         setValues(Object.fromEntries(b.parts.map((p) => [p.member_id, b.split_mode === 'equal' ? '' : String(p.value)])));
         setSavedImage(b.image_url ? api.tripBillImageUrl(b) : '');
       } else {
-        setPayer(loaded.members[0]?.id ?? null);
-        setChosen(loaded.members.map((m) => m.id)); // everyone shares by default
+        setPayer(sharers(loaded)[0]?.id ?? null);
+        setChosen(sharers(loaded).map((m) => m.id)); // everyone shares by default
       }
     } catch (e) {
       setError((e as Error).message);
@@ -107,7 +110,7 @@ export default function TripBillScreen() {
 
   const amount = toSatang(amountText);
   const toggle =(id: number) =>
-    setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : trip!.members.map((m) => m.id).filter((m) => m === id || c.includes(m))));
+    setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : sharers(trip!).map((m) => m.id).filter((m) => m === id || c.includes(m))));
   const value = (id: number) => (mode === 'amount' ? toSatang(values[id] ?? '') : Number(values[id] || (mode === 'ratio' ? 1 : 0)));
   const preview =
     amountText && payer && chosen.length
@@ -156,7 +159,7 @@ export default function TripBillScreen() {
       setAmountText('');
       setMode('equal');
       setValues({});
-      setChosen(trip!.members.map((m) => m.id));
+      setChosen(sharers(trip!).map((m) => m.id));
       scroll.current?.scrollTo({ y: 0, animated: true });
       return;
     }
@@ -254,7 +257,7 @@ export default function TripBillScreen() {
 
         <Field label={t('bill.sharedWith', { n: chosen.length })}>
           <View style={styles.chips}>
-            {trip.members.map((m) => {
+            {sharers(trip).map((m) => {
               const on = chosen.includes(m.id);
               return (
                 <PressScale key={m.id} onPress={() => toggle(m.id)} style={[styles.check, on && styles.checkOn]} accessibilityRole="checkbox" accessibilityState={{ checked: on }}>
@@ -266,7 +269,7 @@ export default function TripBillScreen() {
             })}
           </View>
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Text style={styles.link} onPress={() => setChosen(trip.members.map((m) => m.id))}>{t('bill.everyone')}</Text>
+            <Text style={styles.link} onPress={() => setChosen(sharers(trip).map((m) => m.id))}>{t('bill.everyone')}</Text>
             <Text style={styles.link} onPress={() => setChosen([])}>{t('bill.clear')}</Text>
           </View>
         </Field>

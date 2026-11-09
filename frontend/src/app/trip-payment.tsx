@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, Trip } from '@/api';
 import { PressScale } from '@/components/motion';
+import { PayInfoModal } from '@/components/PayInfo';
 import { PhotoField } from '@/components/PhotoField';
 import { Button, Card, ErrorBox, Loading } from '@/components/ui';
 import { COLORS, dateLabel, isValidDate, showError, toISODate } from '@/format';
@@ -30,6 +31,7 @@ export default function TripPaymentScreen() {
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showPay, setShowPay] = useState(false);
   const due = params.amount ? Number(params.amount) : 0;
 
   const load = async () => {
@@ -101,6 +103,7 @@ export default function TripPaymentScreen() {
   if (error) return <View style={styles.page}><Stack.Screen options={{ title }} /><ErrorBox message={error} onRetry={load} /></View>;
   if (!trip) return <><Stack.Screen options={{ title }} /><Loading /></>;
 
+  const receiver = trip.members.find((m) => m.id === to) ?? null;
   const picker = (role: string, value: number | null, onChange: (id: number) => void, disabled: boolean) => (
     <View style={styles.chips}>
       {trip.members.map((m) => (
@@ -124,7 +127,10 @@ export default function TripPaymentScreen() {
       <Stack.Screen options={{ title }} />
       <Card style={{ gap: 14 }}>
         <Field label={t('tripPay.from')}>{picker(t('tripPay.from'), from, setFrom, !!paymentId)}</Field>
-        <Field label={t('tripPay.to')}>{picker(t('tripPay.to'), to, setTo, !!paymentId)}</Field>
+        <Field label={t('tripPay.to')}>
+          {picker(t('tripPay.to'), to, setTo, !!paymentId)}
+          {!!receiver && !paymentId && <Text style={styles.link} onPress={() => setShowPay(true)}>{t('tripPay.payInfo')}</Text>}
+        </Field>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Field label={t('money.amountBaht')} style={{ flex: 1 }}>
             <TextInput
@@ -168,6 +174,7 @@ export default function TripPaymentScreen() {
           <Button title={saving ? t('common.saving') : t('common.save')} style={{ flex: 1 }} onPress={save} disabled={saving} />
         </View>
       </Card>
+      <PayInfoModal tripId={tripId} member={showPay ? receiver : null} amount={amount / 100} onClose={() => setShowPay(false)} />
     </ScrollView>
   );
 }
@@ -189,4 +196,6 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, borderColor: COLORS.primary },
   chipOn: { backgroundColor: COLORS.primary },
-  chipText: { color: COLORS.primary, fontWeight: '700' },});
+  chipText: { color: COLORS.primary, fontWeight: '700' },
+  link: { color: COLORS.primary, fontWeight: '700', marginTop: 2 },
+});

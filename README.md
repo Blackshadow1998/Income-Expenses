@@ -200,6 +200,10 @@ select box จะแสดงเฉพาะหมวดที่มีราย
 | GET/PUT/DELETE | `/api/trips/{id}` | ทริป (สมาชิก + บิล + การจ่าย) / เปลี่ยนชื่อ `{name}` / ลบทั้งทริป |
 | POST | `/api/trips/{id}/members` | เพิ่มสมาชิก `{name}` |
 | DELETE | `/api/trips/{id}/members/{member}` | ลบสมาชิก (409 ถ้ามีบิลหรือการจ่ายอ้างถึง) |
+| PUT | `/api/trips/{id}/members/{member}` | แก้ชื่อ + ช่องทางรับเงิน `{name, promptpay, bank_name, bank_account, account_name}` |
+| POST | `/api/trips/{id}/pool` | เพิ่มกองกลาง (สมาชิกพิเศษ `is_pool` ทริปละ 1) → ทริปมี `pool: {in, spent, out, balance}` |
+| PUT/DELETE | `/api/members/{id}/qr` | รูป QR รับเงินของสมาชิก/กองกลาง (multipart `qr`) / ลบ |
+| GET | `/api/trip-members/{id}/qr?exp=&sig=` | รูป QR รับเงิน (ลิงก์ลงลายเซ็นจาก `qr_url`) |
 | GET/POST | `/api/trips/{id}/bills` | บิล / เพิ่ม `{title, amount, payer_id, split_mode: equal\|amount\|ratio, date, parts: [{member_id, value}]}` |
 | PUT/DELETE | `/api/bills/{id}` | แก้ / ลบ บิล |
 | PUT/DELETE | `/api/bills/{id}/image` | แนบ/เปลี่ยนรูปบิล (multipart ไฟล์ `image`) / เอารูปออก |

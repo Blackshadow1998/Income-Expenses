@@ -20,6 +20,7 @@ import (
 
 	"income-expenses/internal/auth"
 	"income-expenses/internal/httpx"
+	"income-expenses/internal/i18n"
 	"income-expenses/internal/images"
 	"income-expenses/internal/money"
 	"income-expenses/internal/split"
@@ -37,6 +38,7 @@ func New(db *sql.DB, img *images.Store) *Service { return &Service{db: db, image
 func (a *Service) Register(mux *http.ServeMux, guard func(http.HandlerFunc) http.HandlerFunc) {
 	mux.HandleFunc("GET /api/trip-payments/{id}/slip", a.tripSlipImage) // signed link instead of a session
 	mux.HandleFunc("GET /api/trip-bills/{id}/image", a.tripBillImage)   // likewise
+	mux.HandleFunc("GET /api/trip-members/{id}/qr", a.tripMemberQR)     // likewise
 	data := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, guard(h)) }
 	data("GET /api/trips", a.listTrips)
 	data("POST /api/trips", a.createTrip)
@@ -44,6 +46,10 @@ func (a *Service) Register(mux *http.ServeMux, guard func(http.HandlerFunc) http
 	data("PUT /api/trips/{id}", a.updateTrip)
 	data("DELETE /api/trips/{id}", a.deleteTrip)
 	data("POST /api/trips/{id}/members", a.addTripMember)
+	data("POST /api/trips/{id}/pool", a.addTripPool)
+	data("PUT /api/trips/{id}/members/{member}", a.updateTripMember)
+	data("PUT /api/members/{id}/qr", a.setTripMemberQR)
+	data("DELETE /api/members/{id}/qr", a.setTripMemberQR)
 	data("DELETE /api/trips/{id}/members/{member}", a.deleteTripMember)
 	data("GET /api/trips/{id}/bills", a.listTripBills)
 	data("POST /api/trips/{id}/bills", a.createTripBill)
@@ -61,9 +67,26 @@ func (a *Service) Register(mux *http.ServeMux, guard func(http.HandlerFunc) http
 	data("POST /api/trip-ocr", a.tripOCR)
 }
 
+// TripMember is a person on the trip, or the trip's shared pool (IsPool), with how to pay them.
 type TripMember struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	IsPool      bool   `json:"is_pool"`
+	PromptPay   string `json:"promptpay"` // mobile (10), ID card (13) or e-Wallet (15) digits
+	BankName    string `json:"bank_name"`
+	BankAccount string `json:"bank_account"`
+	AccountName string `json:"account_name"`
+	QRURL       string `json:"qr_url"` // signed link to their payment QR picture, '' without one
+}
+
+// TripPool is the shared pool's money. It is a member that never shares bills: members pay into it,
+// bills are paid from it and what is left is handed back, all through the usual balances.
+type TripPool struct {
+	MemberID int64   `json:"member_id"`
+	In       float64 `json:"in"`      // paid into the pool
+	Spent    float64 `json:"spent"`   // bills paid from it
+	Out      float64 `json:"out"`     // paid out of it (refunds)
+	Balance  float64 `json:"balance"` // what it should hold now
 }
 
 type TripBillPart struct {
@@ -103,6 +126,7 @@ type Trip struct {
 	Members   []TripMember  `json:"members"`
 	Bills     []TripBill    `json:"bills"`
 	Payments  []TripPayment `json:"payments"`
+	Pool      *TripPool     `json:"pool"` // nil when the trip has no shared pool
 }
 
 const maxTripSlipBytes = 10 << 20
@@ -141,16 +165,26 @@ func (a *Service) loadTrip(ctx context.Context, uid, id int64) (*tripData, error
 	if err != nil {
 		return nil, err
 	}
-	rows, err := a.db.QueryContext(ctx, `SELECT id, name FROM trip_members WHERE trip_id = ? ORDER BY sort_order, id`, id)
+	rows, err := a.db.QueryContext(ctx, `
+		SELECT id, name, is_pool, promptpay, bank_name, bank_account, account_name, qr_file
+		FROM trip_members WHERE trip_id = ? ORDER BY sort_order, id`, id)
 	if err != nil {
 		return nil, err
 	}
 	t.Members = []TripMember{}
 	for rows.Next() {
 		var m TripMember
-		if err := rows.Scan(&m.ID, &m.Name); err != nil {
+		var qr string
+		if err := rows.Scan(&m.ID, &m.Name, &m.IsPool, &m.PromptPay, &m.BankName, &m.BankAccount, &m.AccountName, &qr); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if m.IsPool {
+			m.Name = i18n.T(i18n.FromContext(ctx), poolName)
+			t.Pool = &TripPool{MemberID: m.ID}
+		}
+		if qr != "" {
+			m.QRURL = a.images.Link(memberQR.path, memberQR.sig, m.ID)
 		}
 		t.Members = append(t.Members, m)
 		t.members = append(t.members, m.ID)
@@ -229,13 +263,34 @@ func (a *Service) loadTrip(ctx context.Context, uid, id int64) (*tripData, error
 		t.Payments = append(t.Payments, p)
 		t.payments = append(t.payments, split.Payment{From: p.From, To: p.To, Amount: amount})
 	}
-	return t, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if t.Pool != nil {
+		var in, spent, out int64
+		for i, b := range t.bills {
+			if b.Payer == t.Pool.MemberID {
+				spent += amounts[i]
+			}
+		}
+		for _, p := range t.payments {
+			if p.To == t.Pool.MemberID {
+				in += p.Amount
+			}
+			if p.From == t.Pool.MemberID {
+				out += p.Amount
+			}
+		}
+		t.Pool.In, t.Pool.Spent, t.Pool.Out = money.FromSatang(in), money.FromSatang(spent), money.FromSatang(out)
+		t.Pool.Balance = money.FromSatang(in - spent - out)
+	}
+	return t, nil
 }
 
 func (a *Service) listTrips(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
 		SELECT t.id, t.name, t.created_at,
-		       (SELECT COUNT(*) FROM trip_members m WHERE m.trip_id = t.id),
+		       (SELECT COUNT(*) FROM trip_members m WHERE m.trip_id = t.id AND m.is_pool = 0),
 		       (SELECT COUNT(*) FROM trip_bills b WHERE b.trip_id = t.id),
 		       (SELECT COALESCE(SUM(amount_satang), 0) FROM trip_bills b WHERE b.trip_id = t.id)
 		FROM trips t WHERE t.user_id = ? ORDER BY t.id DESC`, auth.UserID(r))
@@ -379,12 +434,14 @@ func (a *Service) deleteTrip(w http.ResponseWriter, r *http.Request) {
 		httpx.ServerError(w, err)
 		return
 	}
-	billFiles, err := a.tripFiles(r.Context(), billImage, `trip_id = ?`, id)
-	if err != nil {
-		httpx.ServerError(w, err)
-		return
+	for _, k := range []tripImage{billImage, memberQR} {
+		more, err := a.tripFiles(r.Context(), k, `trip_id = ?`, id)
+		if err != nil {
+			httpx.ServerError(w, err)
+			return
+		}
+		files = append(files, more...)
 	}
-	files = append(files, billFiles...)
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		httpx.ServerError(w, err)
@@ -490,6 +547,11 @@ func (a *Service) deleteTripMember(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "ลบไม่ได้: สมาชิกคนนี้มีบิลหรือการจ่ายเงินอยู่ ให้ลบหรือแก้บิลเหล่านั้นก่อน"})
 		return
 	}
+	files, err := a.tripFiles(r.Context(), memberQR, `id = ?`, member)
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
 	res, err := a.db.ExecContext(r.Context(), `DELETE FROM trip_members WHERE id = ? AND trip_id = ?`, member, id)
 	if err != nil {
 		httpx.ServerError(w, err)
@@ -497,6 +559,143 @@ func (a *Service) deleteTripMember(w http.ResponseWriter, r *http.Request) {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		httpx.NotFound(w)
+		return
+	}
+	for _, f := range files {
+		a.images.Remove(f)
+	}
+	a.respondTrip(w, r, id, http.StatusOK)
+}
+
+// poolName is the shared pool's name in the database (Thai; answered in the client's language).
+const poolName = "กองกลาง"
+
+// addTripPool gives the trip its shared pool; a trip has at most one.
+func (a *Service) addTripPool(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathID(w, r)
+	if !ok {
+		return
+	}
+	if owns, err := a.ownsTrip(r.Context(), auth.UserID(r), id); err != nil || !owns {
+		if err != nil {
+			httpx.ServerError(w, err)
+		} else {
+			httpx.NotFound(w)
+		}
+		return
+	}
+	var has bool
+	if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM trip_members WHERE trip_id = ? AND is_pool = 1)`, id).Scan(&has); err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	if has {
+		httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "ทริปนี้มีกองกลางแล้ว"})
+		return
+	}
+	if _, err := a.db.ExecContext(r.Context(), `
+		INSERT INTO trip_members (trip_id, name, is_pool, sort_order)
+		VALUES (?1, ?2, 1, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM trip_members WHERE trip_id = ?1))`, id, poolName); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "มีสมาชิกชื่อนี้ในทริปแล้ว"})
+			return
+		}
+		httpx.ServerError(w, err)
+		return
+	}
+	a.respondTrip(w, r, id, http.StatusCreated)
+}
+
+// promptPayID keeps the digits of a PromptPay ID and checks its length: a mobile number (10, from
+// 0), an ID card or tax number (13) or an e-Wallet ID (15); ” is allowed (none).
+func promptPayID(s string) (string, bool) {
+	var b strings.Builder
+	for _, c := range s {
+		switch {
+		case c >= '0' && c <= '9':
+			b.WriteRune(c)
+		case c == ' ' || c == '-':
+		default:
+			return "", false
+		}
+	}
+	d := b.String()
+	switch len(d) {
+	case 0, 13, 15:
+		return d, true
+	case 10:
+		return d, d[0] == '0'
+	}
+	return "", false
+}
+
+// updateTripMember renames a member (not the pool) and sets how to pay them.
+func (a *Service) updateTripMember(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathID(w, r)
+	if !ok {
+		return
+	}
+	member, err := strconv.ParseInt(r.PathValue("member"), 10, 64)
+	if err != nil {
+		httpx.BadRequest(w, "invalid member id")
+		return
+	}
+	var in struct {
+		Name        string `json:"name"`
+		PromptPay   string `json:"promptpay"`
+		BankName    string `json:"bank_name"`
+		BankAccount string `json:"bank_account"`
+		AccountName string `json:"account_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpx.BadRequest(w, "invalid JSON body")
+		return
+	}
+	pp, ok := promptPayID(in.PromptPay)
+	if !ok {
+		httpx.BadRequest(w, "เลขพร้อมเพย์ต้องเป็นเบอร์มือถือ 10 หลัก เลขบัตรประชาชน 13 หลัก หรือ e-Wallet 15 หลัก")
+		return
+	}
+	bank := strings.Join(strings.Fields(in.BankName), " ")
+	account := strings.TrimSpace(in.BankAccount)
+	holder := strings.Join(strings.Fields(in.AccountName), " ")
+	if len([]rune(bank)) > 60 || len([]rune(account)) > 30 || len([]rune(holder)) > 80 {
+		httpx.BadRequest(w, "ข้อมูลบัญชียาวเกินไป")
+		return
+	}
+	if owns, err := a.ownsTrip(r.Context(), auth.UserID(r), id); err != nil || !owns {
+		if err != nil {
+			httpx.ServerError(w, err)
+		} else {
+			httpx.NotFound(w)
+		}
+		return
+	}
+	var isPool bool
+	err = a.db.QueryRowContext(r.Context(), `SELECT is_pool FROM trip_members WHERE id = ? AND trip_id = ?`, member, id).Scan(&isPool)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.NotFound(w)
+		return
+	}
+	if err != nil {
+		httpx.ServerError(w, err)
+		return
+	}
+	name := poolName
+	if !isPool {
+		if name, ok = tidyName(in.Name, 40); !ok {
+			httpx.BadRequest(w, "กรุณาใส่ชื่อสมาชิก (ไม่เกิน 40 ตัวอักษร)")
+			return
+		}
+	}
+	if _, err := a.db.ExecContext(r.Context(), `
+		UPDATE trip_members SET name = ?, promptpay = ?, bank_name = ?, bank_account = ?, account_name = ? WHERE id = ?`,
+		name, pp, bank, account, holder, member); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			httpx.WriteJSON(w, http.StatusConflict, map[string]string{"error": "มีสมาชิกชื่อนี้ในทริปแล้ว"})
+			return
+		}
+		httpx.ServerError(w, err)
 		return
 	}
 	a.respondTrip(w, r, id, http.StatusOK)
@@ -535,19 +734,24 @@ func (a *Service) decodeBill(w http.ResponseWriter, r *http.Request, tripID int6
 		in.SplitMode = split.Equal
 	}
 	members := map[int64]bool{}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT id FROM trip_members WHERE trip_id = ?`, tripID)
+	var pool int64
+	rows, err := a.db.QueryContext(r.Context(), `SELECT id, is_pool FROM trip_members WHERE trip_id = ?`, tripID)
 	if err != nil {
 		httpx.ServerError(w, err)
 		return in, b, false
 	}
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var isPool bool
+		if err := rows.Scan(&id, &isPool); err != nil {
 			rows.Close()
 			httpx.ServerError(w, err)
 			return in, b, false
 		}
 		members[id] = true
+		if isPool {
+			pool = id
+		}
 	}
 	rows.Close()
 	if !members[in.PayerID] {
@@ -558,6 +762,10 @@ func (a *Service) decodeBill(w http.ResponseWriter, r *http.Request, tripID int6
 	for _, p := range in.Parts {
 		if !members[p.MemberID] {
 			httpx.BadRequest(w, "คนหารต้องเป็นสมาชิกของทริป")
+			return in, b, false
+		}
+		if p.MemberID == pool {
+			httpx.BadRequest(w, "กองกลางร่วมหารบิลไม่ได้")
 			return in, b, false
 		}
 		v := int64(0)
@@ -809,6 +1017,15 @@ func (a *Service) tripSummary(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pairs {
 		owed += p.Owed
 		paid += min(max(p.Paid, 0), p.Owed)
+		if p.Remaining < 0 {
+			// Paid more than owed (e.g. into the pool): the rest is handed back, shown as a debt the other way.
+			back := money.FromSatang(-p.Remaining)
+			out.Pairs = append(out.Pairs, tripPair{p.To, p.From, t.names[p.To], t.names[p.From], back, 0, back, split.Unpaid})
+			if mode == "pairwise" {
+				owe(p.To, p.From, -p.Remaining)
+			}
+			continue
+		}
 		out.Pairs = append(out.Pairs, tripPair{p.From, p.To, t.names[p.From], t.names[p.To],
 			money.FromSatang(p.Owed), money.FromSatang(p.Paid), money.FromSatang(p.Remaining), p.Status})
 		if mode == "pairwise" {
@@ -1060,6 +1277,7 @@ type tripImage struct {
 var (
 	paymentSlip = tripImage{"trip_payments", "slip_file", "/api/trip-payments/%d/slip", "trip"}
 	billImage   = tripImage{"trip_bills", "image_file", "/api/trip-bills/%d/image", "tripbill"}
+	memberQR    = tripImage{"trip_members", "qr_file", "/api/trip-members/%d/qr", "tripqr"}
 )
 
 func (a *Service) tripFiles(ctx context.Context, k tripImage, where string, arg int64) ([]string, error) {
@@ -1084,6 +1302,9 @@ func (a *Service) tripSlipImage(w http.ResponseWriter, r *http.Request) {
 }
 func (a *Service) tripBillImage(w http.ResponseWriter, r *http.Request) {
 	a.serveTripImage(w, r, billImage)
+}
+func (a *Service) tripMemberQR(w http.ResponseWriter, r *http.Request) {
+	a.serveTripImage(w, r, memberQR)
 }
 
 func (a *Service) serveTripImage(w http.ResponseWriter, r *http.Request, k tripImage) {
@@ -1112,6 +1333,11 @@ func (a *Service) serveTripImage(w http.ResponseWriter, r *http.Request, k tripI
 // PUT (multipart, field "image") replaces a bill's photo; DELETE removes it.
 func (a *Service) setTripBillImage(w http.ResponseWriter, r *http.Request) {
 	a.setTripImage(w, r, billImage, "image")
+}
+
+// PUT (multipart, field "qr") sets a member's (or the pool's) payment QR picture; DELETE removes it.
+func (a *Service) setTripMemberQR(w http.ResponseWriter, r *http.Request) {
+	a.setTripImage(w, r, memberQR, "qr")
 }
 
 // PUT (multipart, field "slip") adds or replaces a payment's slip; DELETE removes it.

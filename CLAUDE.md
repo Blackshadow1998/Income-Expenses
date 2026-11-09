@@ -62,6 +62,10 @@ cd frontend && npx expo start --web --port 8081                                #
   the slips dir as `trip-*` files (backed up); each kind has its own link signature (`tripImage` in trip.go).
   `trip/ocr.go` (parser: `internal/ocr/receipt.go`) reads a receipt (items + total) or slip for the form only — it never stores or auto-saves anything.
   `frontend/src/tripSplit.ts` mirrors the share rule for the form preview (`npm test` runs its tests with Node).
+  Shared pool ("กองกลาง"): a `trip_members` row with `is_pool = 1` (one per trip) that can pay bills and send/receive
+  payments but never shares a bill, so the usual balances say who tops it up or gets money back. Members and the pool
+  carry payment details (`promptpay`, bank fields, `qr_file` picture, signed like other trip images);
+  `frontend/src/promptpay.ts` builds the PromptPay QR payload with the amount (`components/PayInfo.tsx` draws it).
 - The "รายรับรายจ่าย" tab is `index` (month) + hidden `yearly` route, switched by `PeriodSwitch`; the tab bar takes
   glyphs + aliases (`makeSpotlightTabBar`).
 - Slip rules (`slip_rules.go`, screen `slip-rules.tsx`): per-user, checked in `sort_order`, first match → `slip.suggestion` that only **prefills** the confirm form; never auto-confirm. `self` = sender and receiver are the same person (`samePerson`).

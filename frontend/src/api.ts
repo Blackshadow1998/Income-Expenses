@@ -144,9 +144,27 @@ export interface User {
 
 export type SplitMode = 'equal' | 'amount' | 'ratio';
 
+/** A person on the trip, or the trip's shared pool (`is_pool`), with how to pay them. */
 export interface TripMember {
   id: number;
   name: string;
+  is_pool: boolean;
+  promptpay: string; // digits: mobile (10), ID card (13) or e-Wallet (15); '' if none
+  bank_name: string;
+  bank_account: string;
+  account_name: string;
+  qr_url: string; // signed link to their payment QR picture; '' without one
+}
+
+export type TripMemberInput = Pick<TripMember, 'name' | 'promptpay' | 'bank_name' | 'bank_account' | 'account_name'>;
+
+/** The shared pool's money: paid in, spent on bills, paid back out, and what it should hold. */
+export interface TripPool {
+  member_id: number;
+  in: number;
+  spent: number;
+  out: number;
+  balance: number;
 }
 
 export interface TripBill {
@@ -196,6 +214,7 @@ export interface Trip {
   members: TripMember[];
   bills: TripBill[];
   payments: TripPayment[];
+  pool: TripPool | null;
 }
 
 export interface TripListItem {
@@ -584,6 +603,13 @@ export const api = {
   removeTrip: (id: number) => request<void>(`/trips/${id}`, { method: 'DELETE' }),
   addTripMember: (id: number, name: string) => request<Trip>(`/trips/${id}/members`, post({ name })),
   removeTripMember: (id: number, memberId: number) => request<Trip>(`/trips/${id}/members/${memberId}`, { method: 'DELETE' }),
+  updateTripMember: (id: number, memberId: number, body: TripMemberInput) =>
+    request<Trip>(`/trips/${id}/members/${memberId}`, { method: 'PUT', body: JSON.stringify(body) }),
+  addTripPool: (id: number) => request<Trip>(`/trips/${id}/pool`, { method: 'POST' }),
+  setTripMemberQR: (memberId: number, image: ImagePickerAsset | null) =>
+    image ? request<Trip>(`/members/${memberId}/qr`, { method: 'PUT', body: imageForm('qr', image) })
+      : request<Trip>(`/members/${memberId}/qr`, { method: 'DELETE' }),
+  tripMemberQRUrl: (m: TripMember) => `${API_URL}${m.qr_url}`,
   createTripBill: (tripId: number, body: TripBillInput) => request<Trip>(`/trips/${tripId}/bills`, post(body)),
   updateTripBill: (id: number, body: TripBillInput) => request<Trip>(`/bills/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   removeTripBill: (id: number) => request<Trip>(`/bills/${id}`, { method: 'DELETE' }),

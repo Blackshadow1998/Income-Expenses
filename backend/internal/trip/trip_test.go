@@ -273,3 +273,124 @@ func TestTripSplitAPI(t *testing.T) {
 		t.Fatalf("delete trip: %d", status)
 	}
 }
+
+// The shared pool is a member that never shares bills: money paid into it, bills paid from it, and
+// what is left handed back, all through the usual balances. Members (and the pool) carry how to pay them.
+func TestTripPool(t *testing.T) {
+	c, dir := newTestServer(t)
+	owner := c.SignedIn("owner")
+	status, trip := c.Do("POST", "/api/trips", owner, map[string]any{"name": "ทะเล", "members": []string{"A", "B"}})
+	if status != http.StatusCreated {
+		t.Fatalf("create trip: %d %v", status, trip)
+	}
+	tripID := int64(trip["id"].(float64))
+	base := fmt.Sprintf("/api/trips/%d", tripID)
+	status, trip = c.Do("POST", base+"/pool", owner, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("add pool: %d %v", status, trip)
+	}
+	if status, out := c.Do("POST", base+"/pool", owner, nil); status != http.StatusConflict {
+		t.Fatalf("second pool: %d %v", status, out)
+	}
+	ids := map[string]int64{}
+	var pool int64
+	for _, m := range trip["members"].([]any) {
+		m := m.(map[string]any)
+		ids[m["name"].(string)] = int64(m["id"].(float64))
+		if m["is_pool"] == true {
+			pool = int64(m["id"].(float64))
+		}
+	}
+	if pool == 0 || ids["กองกลาง"] != pool {
+		t.Fatalf("pool member: %v", trip["members"])
+	}
+	a, b := ids["A"], ids["B"]
+
+	// The pool can pay a bill but never share one.
+	shared := []map[string]any{{"member_id": a}, {"member_id": b}}
+	if status, out := c.Do("POST", base+"/bills", owner, map[string]any{"title": "x", "amount": 100, "payer_id": a, "date": "2026-11-01",
+		"parts": []map[string]any{{"member_id": a}, {"member_id": pool}}}); status != http.StatusBadRequest {
+		t.Fatalf("pool sharing a bill: %d %v", status, out)
+	}
+	if status, out := c.Do("POST", base+"/bills", owner, map[string]any{"title": "ที่พัก", "amount": 1200, "payer_id": pool, "date": "2026-11-01", "parts": shared}); status != http.StatusCreated {
+		t.Fatalf("pool bill: %d %v", status, out)
+	}
+	// A and B put 1,000 each in; 800 is left, 400 back to each.
+	for _, from := range []int64{a, b} {
+		if status, out := postPayment(t, c, owner, tripID, map[string]string{"from_member": fmt.Sprint(from), "to_member": fmt.Sprint(pool), "amount": "1000", "date": "2026-11-01"}, false); status != http.StatusCreated {
+			t.Fatalf("into pool: %d %v", status, out)
+		}
+	}
+	status, trip = c.Do("GET", base, owner, nil)
+	p := trip["pool"].(map[string]any)
+	if status != http.StatusOK || p["in"] != 2000.0 || p["spent"] != 1200.0 || p["balance"] != 800.0 {
+		t.Fatalf("pool: %d %v", status, p)
+	}
+	for _, mode := range []string{"pairwise", "minimal"} {
+		_, sum := c.Do("GET", base+"/summary?mode="+mode, owner, nil)
+		if mode == "pairwise" {
+			// Each paid the pool 1,000 against a 600 share: the pairs show the pool handing 400 back.
+			for _, p := range sum["pairs"].([]any) {
+				p := p.(map[string]any)
+				if int64(p["from"].(float64)) != pool || p["remaining"] != 400.0 || p["status"] != "unpaid" {
+					t.Fatalf("pair: %v", p)
+				}
+			}
+		}
+		for _, person := range sum["people"].([]any) {
+			person := person.(map[string]any)
+			want := map[string]float64{"A": 400, "B": 400, "กองกลาง": -800}[person["name"].(string)]
+			if person["net"] != want {
+				t.Fatalf("%s net of %v: %v, want %v", mode, person["name"], person["net"], want)
+			}
+			if person["name"] == "A" {
+				r := person["receive"].([]any)
+				if len(r) != 1 || r[0].(map[string]any)["amount"] != 400.0 || int64(r[0].(map[string]any)["member_id"].(float64)) != pool {
+					t.Fatalf("%s: A should get 400 back from the pool: %v", mode, person)
+				}
+			}
+		}
+	}
+
+	// Payment details: a bad PromptPay ID is refused; the pool keeps its name.
+	member := fmt.Sprintf("%s/members/%d", base, a)
+	if status, out := c.Do("PUT", member, owner, map[string]any{"name": "A", "promptpay": "12345"}); status != http.StatusBadRequest {
+		t.Fatalf("bad PromptPay: %d %v", status, out)
+	}
+	status, trip = c.Do("PUT", member, owner, map[string]any{"name": "Aa", "promptpay": "081-234-5678", "bank_name": "Bank", "bank_account": "123-4-56789-0", "account_name": "A A"})
+	if status != http.StatusOK {
+		t.Fatalf("payment details: %d %v", status, trip)
+	}
+	for _, m := range trip["members"].([]any) {
+		m := m.(map[string]any)
+		if int64(m["id"].(float64)) == a && (m["name"] != "Aa" || m["promptpay"] != "0812345678" || m["bank_account"] != "123-4-56789-0") {
+			t.Fatalf("member: %v", m)
+		}
+	}
+	if status, trip = c.Do("PUT", fmt.Sprintf("%s/members/%d", base, pool), owner, map[string]any{"name": "x", "promptpay": "0812345678"}); status != http.StatusOK {
+		t.Fatalf("pool details: %d %v", status, trip)
+	}
+	if n := trip["members"].([]any)[2].(map[string]any)["name"]; n != "กองกลาง" {
+		t.Fatalf("pool renamed: %v", n)
+	}
+
+	// A QR picture: upload, open by its signed link, and deleting the trip removes the file.
+	status, trip = putImage(t, c, owner, fmt.Sprintf("/api/members/%d/qr", pool), "qr")
+	if status != http.StatusOK {
+		t.Fatalf("QR: %d %v", status, trip)
+	}
+	qr := trip["members"].([]any)[2].(map[string]any)["qr_url"].(string)
+	if res, err := http.Get(c.URL + qr); err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("QR link: %v %v", res, err)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "trip-*"))
+	if len(files) != 1 {
+		t.Fatalf("QR file: %v", files)
+	}
+	if status, out := c.Do("DELETE", base, owner, nil); status != http.StatusNoContent {
+		t.Fatalf("delete trip: %d %v", status, out)
+	}
+	if files, _ := filepath.Glob(filepath.Join(dir, "trip-*")); len(files) != 0 {
+		t.Fatalf("files left: %v", files)
+	}
+}

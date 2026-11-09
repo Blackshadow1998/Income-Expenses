@@ -353,6 +353,19 @@ func migrate(db *sql.DB) error {
 	if err := addColumnIfMissing(db, "trip_bills", "image_file", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	// Trip members: the trip's shared pool (one per trip) and how to pay each member (or the pool).
+	for _, c := range []struct{ name, def string }{
+		{"is_pool", "INTEGER NOT NULL DEFAULT 0"},
+		{"promptpay", "TEXT NOT NULL DEFAULT ''"},
+		{"bank_name", "TEXT NOT NULL DEFAULT ''"},
+		{"bank_account", "TEXT NOT NULL DEFAULT ''"},
+		{"account_name", "TEXT NOT NULL DEFAULT ''"},
+		{"qr_file", "TEXT NOT NULL DEFAULT ''"}, // picture of a payment QR, in the slips directory
+	} {
+		if err := addColumnIfMissing(db, "trip_members", c.name, c.def); err != nil {
+			return err
+		}
+	}
 	if err := upgradeSubcategories(db); err != nil {
 		return fmt.Errorf("upgrade subcategories: %w", err)
 	}

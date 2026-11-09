@@ -72,6 +72,7 @@ function Gate() {
         <Stack.Screen name="trip" options={{ title: t('screen.trip') }} />
         <Stack.Screen name="trip-bill" options={{ title: t('screen.tripBill') }} />
         <Stack.Screen name="trip-payment" options={{ title: t('screen.tripPayment') }} />
+        <Stack.Screen name="trip-member" options={{ title: t('screen.tripMember') }} />
       </Stack>
       {status === 'needsPassword' && (
         <Overlay>

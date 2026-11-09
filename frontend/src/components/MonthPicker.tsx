@@ -66,6 +66,66 @@ function Sheet({ value, marked, onPick, onClose }: { value: string; marked: stri
   );
 }
 
+/**
+ * Same pop-up for a year: 12 years per page, ‹ › turn a page. `marked` years (with entries) get a dot;
+ * the picked one is filled, this year outlined.
+ */
+export function YearPicker({ visible, value, marked, onPick, onClose }: {
+  visible: boolean;
+  value: number;
+  marked: number[];
+  onPick: (year: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.back} onPress={onClose}>
+        {visible && <YearSheet value={value} marked={marked} onPick={onPick} onClose={onClose} />}
+      </Pressable>
+    </Modal>
+  );
+}
+
+function YearSheet({ value, marked, onPick, onClose }: { value: number; marked: number[]; onPick: (year: number) => void; onClose: () => void }) {
+  // The page puts the shown year in the middle row.
+  const [first, setFirst] = useState(() => value - 4);
+  const now = new Date().getFullYear();
+  const pick = (y: number) => {
+    onClose();
+    if (y !== value) onPick(y);
+  };
+  return (
+    <FadeIn from={24} style={styles.sheetWrap}>
+      <Pressable style={styles.sheet} onPress={() => {}}>
+        <Text style={styles.title}>{t('year.pickTitle')}</Text>
+        <Stepper label={`${yearLabel(first)} – ${yearLabel(first + 11)}`} onPrev={() => setFirst(first - 12)} onNext={() => setFirst(first + 12)} />
+        <View style={styles.grid}>
+          {Array.from({ length: 12 }, (_, i) => {
+            const y = first + i;
+            const on = y === value;
+            return (
+              <PressScale
+                key={y}
+                onPress={() => pick(y)}
+                scaleTo={0.9}
+                containerStyle={styles.cellSpot}
+                style={[styles.cell, y === now && styles.cellNow, on && styles.cellOn]}
+              >
+                <Text style={[styles.cellText, on && styles.cellTextOn]}>{yearLabel(y)}</Text>
+                <View style={[styles.dot, marked.includes(y) && { backgroundColor: on ? '#fff' : COLORS.primary }]} />
+              </PressScale>
+            );
+          })}
+        </View>
+        <View style={styles.actions}>
+          <Button title={t('common.cancel')} variant="soft" onPress={onClose} style={{ flex: 1 }} />
+          <Button title={t('year.thisYear')} onPress={() => pick(now)} style={{ flex: 1 }} />
+        </View>
+      </Pressable>
+    </FadeIn>
+  );
+}
+
 const styles = StyleSheet.create({
   back: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', padding: 16 },
   sheetWrap: { width: '100%', maxWidth: 420, alignSelf: 'center' },

@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Account, api, Category, YearData } from '@/api';
 import { AccountFilter } from '@/components/AccountFilter';
 import { BarChart, BarSeries } from '@/components/BarChart';
+import { YearPicker } from '@/components/MonthPicker';
 import { AnimatedNumber, FadeIn, PressScale, Skeleton } from '@/components/motion';
 import { PeriodSwitch } from '@/components/PeriodSwitch';
 import { Button, Card, ErrorBox, Stepper } from '@/components/ui';
@@ -28,6 +29,8 @@ export default function YearlyScreen() {
   const accountRef = useRef<number | null>(null);
   const [mode, setMode] = useState<Mode>('inout');
   const [selected, setSelected] = useState<number | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [years, setYears] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const yearRef = useRef(year);
   const reqId = useRef(0);
@@ -71,6 +74,12 @@ export default function YearlyScreen() {
     load(yearRef.current);
   };
 
+  // Opens straight away; the dots for years with entries appear when they arrive.
+  const openPicker = () => {
+    setPicking(true);
+    api.years().then(setYears, () => {});
+  };
+
   const openMonth = (monthIndex: number) => {
     setPendingMonth(`${year}-${pad2(monthIndex + 1)}`);
     router.navigate('/');
@@ -82,7 +91,7 @@ export default function YearlyScreen() {
       <FadeIn>
         <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <View style={[styles.blob, { width: 170, height: 170, top: -60, right: -40 }]} />
-          <Stepper light label={t('year.label', { year: yearLabel(year) })} onPrev={() => load(year - 1)} onNext={() => load(year + 1)} />
+          <Stepper light label={t('year.label', { year: yearLabel(year) })} onPrev={() => load(year - 1)} onNext={() => load(year + 1)} onLabelPress={openPicker} />
           <View style={styles.statsRow}>
             <Stat label={t('year.totalIn')} value={data?.totals.in} />
             <Stat label={t('year.totalOut')} value={data?.totals.out} />
@@ -166,6 +175,7 @@ export default function YearlyScreen() {
           </FadeIn>
         </>
       )}
+      <YearPicker visible={picking} value={year} marked={years} onPick={load} onClose={() => setPicking(false)} />
     </ScrollView>
   );
 }

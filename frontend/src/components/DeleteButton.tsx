@@ -1,8 +1,11 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useRef, useState } from 'react';
 import { Animated, Easing, LayoutChangeEvent, Platform, Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import { COLORS, showError } from '../format';
+import { showError } from '../format';
 
 const native = Platform.OS !== 'web';
+// Solid red in both themes (white text needs a dark enough red); the ring uses the darker end.
+const RED = ['#dc5a4b', '#a9352a'] as const;
 
 // Thai vowel and tone marks that sit above/below the previous letter; they fly with it.
 const MARK = /[ัิ-ฺ็-๎]/;
@@ -147,6 +150,7 @@ export function DeleteButton({ title, small, style, confirm, onDelete, onDone }:
             : { alignSelf: 'stretch' },
         ]}
       >
+        <LinearGradient colors={RED} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
         <Animated.View
           onLayout={(e) => (content.current = { w: e.nativeEvent.layout.width })}
           style={[styles.content, frame && { width: frame.cw, transform: [{ translateX: shrink.interpolate({ inputRange: [0, 1], outputRange: [0, frame.shift] }) }] }]}
@@ -213,19 +217,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    backgroundColor: COLORS.card,
-    borderColor: COLORS.dangerBorder,
+    backgroundColor: RED[1],
+    borderColor: 'transparent',
+    boxShadow: '0px 6px 14px rgba(169, 53, 42, 0.35)',
   },
   btnSmall: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10 },
   content: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 0 },
   row: { flexDirection: 'row', alignItems: 'center' },
-  letter: { fontWeight: '700', color: COLORS.out },
+  letter: { fontWeight: '700', color: '#fff' },
   ring: {
     position: 'absolute',
     borderWidth: 2.5,
     borderColor: 'transparent',
-    borderTopColor: COLORS.out,
-    borderRightColor: COLORS.out,
+    borderTopColor: RED[1],
+    borderRightColor: RED[1],
   },
   bin: { width: 16, alignItems: 'center' },
   handle: {
@@ -234,18 +239,18 @@ const styles = StyleSheet.create({
     height: 3,
     borderWidth: 1.5,
     borderBottomWidth: 0,
-    borderColor: COLORS.out,
+    borderColor: '#fff',
     borderTopLeftRadius: 2,
     borderTopRightRadius: 2,
   },
-  lid: { width: 16, height: 2, borderRadius: 1, backgroundColor: COLORS.out },
+  lid: { width: 16, height: 2, borderRadius: 1, backgroundColor: '#fff' },
   can: {
     width: 12,
     height: 13,
     marginTop: 1.5,
     borderWidth: 1.8,
     borderTopWidth: 0,
-    borderColor: COLORS.out,
+    borderColor: '#fff',
     borderBottomLeftRadius: 3,
     borderBottomRightRadius: 3,
   },

@@ -288,6 +288,8 @@ export const en: Record<keyof typeof th, string> = {
 
   // Yearly screen
   'year.label': 'Year {year}',
+  'year.pickTitle': 'Pick a year',
+  'year.thisYear': 'This year',
   'year.totalIn': 'In this year',
   'year.totalOut': 'Out this year',
   'year.net': 'Net this year',

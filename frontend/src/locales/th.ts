@@ -286,6 +286,8 @@ export const th = {
 
   // Yearly screen
   'year.label': 'ปี {year}',
+  'year.pickTitle': 'เลือกปี',
+  'year.thisYear': 'ปีนี้',
   'year.totalIn': 'เงินเข้าทั้งปี',
   'year.totalOut': 'เงินออกทั้งปี',
   'year.net': 'สุทธิทั้งปี',

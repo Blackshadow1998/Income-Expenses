@@ -18,9 +18,9 @@ function letters(text: string): string[] {
 const run = (a: Animated.CompositeAnimation) => new Promise<void>((done) => a.start(() => done()));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const LETTER_MS = 380;
-const STAGGER_MS = 45;
-const MIN_PENDING_MS = 900; // the ring makes at least about one turn
+const LETTER_MS = 620;
+const STAGGER_MS = 80;
+const MIN_PENDING_MS = 1500; // the ring makes at least about one turn
 
 type Phase = 'idle' | 'busy';
 /** Sizes taken when the animation starts (button, content row, bin and letter centres). */
@@ -75,27 +75,27 @@ export function DeleteButton({ title, small, style, confirm, onDelete, onDone }:
       Animated.parallel([
         Animated.timing(fly, { toValue: 1, duration: total, easing: Easing.linear, useNativeDriver: native }),
         Animated.sequence([
-          Animated.timing(lid, { toValue: 1, duration: 150, useNativeDriver: native }),
-          Animated.delay(Math.max(0, total - 280)),
-          Animated.timing(lid, { toValue: 0, duration: 130, easing: Easing.in(Easing.quad), useNativeDriver: native }),
+          Animated.timing(lid, { toValue: 1, duration: 240, useNativeDriver: native }),
+          Animated.delay(Math.max(0, total - 450)),
+          Animated.timing(lid, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: native }),
         ]),
       ]),
     );
     spin.setValue(0);
-    const spinning = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 800, easing: Easing.linear, useNativeDriver: native }));
+    const spinning = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1200, easing: Easing.linear, useNativeDriver: native }));
     spinning.start();
     await run(
       Animated.parallel([
-        Animated.timing(shrink, { toValue: 1, duration: 320, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
-        Animated.timing(ring, { toValue: 1, duration: 320, useNativeDriver: native }),
+        Animated.timing(shrink, { toValue: 1, duration: 520, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+        Animated.timing(ring, { toValue: 1, duration: 520, useNativeDriver: native }),
       ]),
     );
     const [result] = await Promise.allSettled([request, sleep(MIN_PENDING_MS)]);
-    await run(Animated.timing(ring, { toValue: 0, duration: 200, useNativeDriver: native }));
+    await run(Animated.timing(ring, { toValue: 0, duration: 300, useNativeDriver: native }));
     spinning.stop();
     if (result.status === 'rejected') showError(result.reason);
     fly.setValue(0); // letters come back hidden behind the round edge and show as it opens
-    await run(Animated.spring(shrink, { toValue: 0, speed: 14, bounciness: 7, useNativeDriver: false }));
+    await run(Animated.spring(shrink, { toValue: 0, speed: 8, bounciness: 7, useNativeDriver: false }));
     setPhase('idle');
     setFrame(null);
     if (result.status === 'fulfilled') onDone?.();
